@@ -1,0 +1,62 @@
+{
+  "name": "env_000_dummy",
+  "description": "Small corporate office network: a perimeter firewall in front of a flat internal LAN containing a domain controller, two workstations, and a file server.",
+  "current_date": "2026-06-12",
+  "segments": [
+    {
+      "id": "perimeter",
+      "description": "Internet-facing edge."
+    },
+    {
+      "id": "corp-lan",
+      "description": "Internal corporate LAN — workstations, domain controller, and file server. Address range 10.10.0.0/16."
+    }
+  ],
+  "devices": [
+    {
+      "id": "fw01",
+      "hostname": "EDGE-FW01",
+      "role": "perimeter firewall",
+      "os": "vendor appliance (firewall/router)",
+      "ip": "203.0.113.1",
+      "segment": "perimeter",
+      "notes": "Internet-facing edge device. NATs internal traffic out; no inbound rules besides a site-to-site VPN to a branch office."
+    },
+    {
+      "id": "dc01",
+      "hostname": "CORP-DC01",
+      "role": "domain controller",
+      "os": "Windows Server 2022",
+      "ip": "10.10.0.10",
+      "segment": "corp-lan",
+      "notes": "Primary Active Directory domain controller for corp.local. Also runs DNS for the internal network."
+    },
+    {
+      "id": "ws01",
+      "hostname": "FIN-ALICE",
+      "role": "workstation",
+      "os": "Windows 11",
+      "ip": "10.10.10.21",
+      "segment": "corp-lan",
+      "notes": "Primary workstation for Alice Chen, Finance analyst."
+    },
+    {
+      "id": "ws02",
+      "hostname": "IT-BOB",
+      "role": "workstation",
+      "os": "Windows 11",
+      "ip": "10.10.10.35",
+      "segment": "corp-lan",
+      "notes": "Primary workstation for Bob Nguyen, IT administrator. Bob holds domain admin rights and regularly remotes into servers and other workstations for support."
+    },
+    {
+      "id": "fs01",
+      "hostname": "CORP-FS01",
+      "role": "file server",
+      "os": "Windows Server 2019",
+      "ip": "10.10.0.20",
+      "segment": "corp-lan",
+      "notes": "Hosts SMB shares for the Finance and IT departments, including a Finance\\Confidential share."
+    }
+  ]
+}
