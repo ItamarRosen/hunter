@@ -16,7 +16,7 @@ import anthropic
 from engine.evidence import COLLECT_EVIDENCE_TOOL, EvidenceCollector
 
 HUNTER_PROMPT_PATH = Path(__file__).parent / "prompts" / "hunter_system.md"
-DEFAULT_MODEL = "claude-sonnet-4-6"
+DEFAULT_MODEL = "claude-opus-4-8"
 DEFAULT_MAX_COLLECTIONS = 15
 
 SUBMIT_REPORT_TOOL = {
