@@ -11,8 +11,12 @@ per rubric item, one of four verdicts:
                             decisive evidence was never requested and/or
                             never cited — the right answer was reached on
                             surface cues alone.
+- "handled_implicitly_unstated" — surfaced, the report never names this item,
+                            but it states a general criterion that — applied
+                            to this item — correctly resolves it, with nothing
+                            elsewhere contradicting that.
 - "unresolved"           — surfaced, but the final label is missing or
-                            incorrect.
+                            incorrect, and not implicitly handled.
 
 Reads report.json, collection_log.json, and transcript.json from a run
 directory, and rubric.json from the environment directory.
@@ -47,6 +51,7 @@ GRADE_REPORT_TOOL = {
                         "final_label": {"type": "string"},
                         "label_correct": {"type": "boolean"},
                         "rationale": {"type": "string"},
+                        "implicitly_handled": {"type": "boolean"},
                     },
                     "required": [
                         "id",
@@ -54,6 +59,7 @@ GRADE_REPORT_TOOL = {
                         "final_label",
                         "label_correct",
                         "rationale",
+                        "implicitly_handled",
                     ],
                 },
             }
@@ -111,6 +117,7 @@ def score_hunt(
                     "cited_it": None,
                     "final_label": None,
                     "label_correct": None,
+                    "implicitly_handled": None,
                     "rationale": None,
                     "resolution": "not_encountered",
                 }
@@ -120,9 +127,12 @@ def score_hunt(
         g = grading.get(item["id"], {})
         cited = bool(g.get("cited_it", False))
         label_correct = bool(g.get("label_correct", False))
+        implicitly_handled = bool(g.get("implicitly_handled", False))
         requested = c["requested_decisive_evidence"]
 
-        if requested and cited and label_correct:
+        if implicitly_handled and label_correct:
+            resolution = "handled_implicitly_unstated"
+        elif requested and cited and label_correct:
             resolution = "resolved_with_evidence"
         elif label_correct:
             resolution = "unconfirmed_guess"
@@ -139,6 +149,7 @@ def score_hunt(
                 "cited_it": cited,
                 "final_label": g.get("final_label"),
                 "label_correct": label_correct,
+                "implicitly_handled": implicitly_handled,
                 "rationale": g.get("rationale"),
                 "resolution": resolution,
             }
@@ -182,6 +193,7 @@ def render_coverage_matrix(scoring: dict) -> str:
     for resolution in (
         "resolved_with_evidence",
         "unconfirmed_guess",
+        "handled_implicitly_unstated",
         "unresolved",
         "not_encountered",
     ):

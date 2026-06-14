@@ -1,9 +1,9 @@
-# env_003 validity fixes — GAP 1-3
+# env_003 validity fixes — GAP 1-3, plus env_004
 
 This document records what changed for each validity gap identified after the
 first env_003 run (`runs/env_003_wrong_story_20260614T133031Z/`), and the
-acceptance check performed for each. GAP 4 (the "costume" environment,
-env_004) is optional and **not started** — see bottom.
+acceptance check performed for each. GAP 4 is a new environment,
+`env_004_cloud_identity_lotl` — see bottom.
 
 No changes were made to the real incident's timeline, indicators, or the
 genuine EID 4104 evidence gap; they remain regression anchors.
@@ -310,7 +310,84 @@ training around this specific failure mode.
 
 ---
 
-## GAP 4 — env_004_costume
+## GAP 4 — env_004_cloud_identity_lotl
 
-**Status: not started.** This is the largest remaining piece of net-new work
-and is explicitly optional. Will discuss scope/design before starting.
+A new, second environment: a hybrid-identity tenant (on-prem `corp.local`
+Active Directory, synced via Entra Connect to a `corp.com` Microsoft Entra
+ID/M365 tenant), built around a real cloud-identity living-off-the-land
+intrusion modeled on Storm-0558 / Midnight Blizzard-style techniques — a stale
+external-auditor account compromised off-platform, used to register a
+malicious OAuth app, consent to mail/file read scopes, and read executive
+mailboxes and an M&A SharePoint site via Microsoft Graph for two weeks. No
+malware, no endpoint activity, no unusual network destination — the entire
+incident lives in identity/SaaS audit logs.
+
+This environment is harder by construction than env_003: the real intrusion
+is deliberately the *quietest* thing present, competing against a
+password-spray burst (zero successes) and an authorized penetration test
+(engagement PT-2026-03) that both generate far louder, HIGH-severity alerts.
+
+**New files:**
+- `environments/env_004_cloud_identity_lotl/topology.json` — 7 devices across
+  two segments: `on-prem` (`fw01`, `dc01`, `ws01`) and `cloud` (`entra01`,
+  `exo01`, `spo01`, `itsm01` — the Entra ID tenant, Exchange Online, SharePoint
+  Online, and a GRC/ITSM system of record). Description is strictly neutral —
+  no hint of where or what the incident is, per the GAP 1 lesson.
+- `environments/env_004_cloud_identity_lotl/ground_truth.md` — overview,
+  timeline, 5 core-incident reference tags (2 FEED, 3 ON-DEMAND), a benign-twins
+  table of 5 legitimate mail/file-scoped OAuth apps (one of which is itself
+  recently-registered and unverified-publisher, to prove those traits alone
+  aren't damning), two competing-narrative tables (pentest + spray) each with
+  a separate ON-DEMAND-only decisive-evidence tag, one genuine evidence gap
+  (MailItemsAccessed not enabled tenant-wide until 2026-06-01), and a baseline
+  section for every device.
+- `environments/env_004_cloud_identity_lotl/rubric.json` — 11 items: 3
+  core_incident (sign-in+provenance, OAuth app registration+consent/SP
+  persistence, SP data access via Graph+SharePoint), 1 evidence_gap
+  (MailItemsAccessed), 5 decoy (the benign-twin apps), 2 competing_narrative
+  (pentest PT-2026-03, password spray).
+
+### New scoring concept: `handled_implicitly_unstated`
+
+Carrying forward the env_003 refinement that credited dismissals reached via
+a stated general criterion: env_004's benign-twin apps are designed so a
+strong report states one general distinguishing criterion (e.g. "registered
+by IT under a change ticket, verified publisher, established history") that
+correctly resolves several decoys *without naming each one* — naming all 5
+apps individually would be unnatural for a real analyst. Previously this
+would score as `unresolved` (`"not addressed in report"`,
+`label_correct: false`), unfairly penalizing a report that handled these
+correctly but implicitly.
+
+- `engine/prompts/grader_system.md` — added **Step 1b** (only when Step 1
+  finds nothing naming the item): if the report states a general criterion
+  that, applied to this item, would clearly yield `correct_label`, and nothing
+  contradicts that, then `implicitly_handled: true`,
+  `final_label: "not addressed in report (implicitly handled — <criterion>)"`,
+  `label_correct: true`, and `cited_it` is judged against that *general*
+  criterion vs. `decisive_evidence_description`. Otherwise the old
+  `"not addressed in report"` / `label_correct: false` / `cited_it: false`
+  fallback applies. Added a worked example alongside the existing one.
+- `engine/scoring.py` — added `implicitly_handled` to `GRADE_REPORT_TOOL`'s
+  schema (required field), to the `not_encountered` result dict (`None`), and
+  to the resolution logic:
+
+  ```python
+  if implicitly_handled and label_correct: resolution = "handled_implicitly_unstated"
+  elif requested and cited and label_correct: resolution = "resolved_with_evidence"
+  elif label_correct:                         resolution = "unconfirmed_guess"
+  else:                                        resolution = "unresolved"
+  ```
+  Added `"handled_implicitly_unstated"` to the module docstring's resolution
+  list and to `render_coverage_matrix`'s summary-count rows.
+
+This is shared infrastructure — it also applies retroactively to any future
+env_003 reruns, though env_003's rubric has no items designed around it.
+
+### Acceptance check
+
+`topology.json` and `rubric.json` both parse via `json.load`; `rubric.json`
+has 11 items across the 4 expected categories. Every tag referenced in
+`rubric.json`'s `encounter_tags`/`decisive_evidence_tags` (15 distinct tags)
+appears in `ground_truth.md`. No hunt has been run against this environment
+yet — that's the natural next step.

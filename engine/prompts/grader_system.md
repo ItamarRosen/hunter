@@ -24,14 +24,32 @@ These are two independent judgments, graded on separate axes. **Do not let one i
 > The report says: "We believe this is an authorized exercise based on the account's naming pattern and its clean reputation; no authorization ticket was requested."
 > → `final_label`: "Authorized exercise; not part of the real intrusion." `label_correct`: **true** (the bottom-line verdict matches). `cited_it`: **false** (`decisive_evidence_collected` is empty / the ticket was never requested — the naming pattern and reputation are explicitly the insufficient surface cues). Both facts are recorded; neither is suppressed in favor of the other.
 
+**Worked example for `implicitly_handled`** (Step 1b):
+> This item: "App X — a long-standing, verified-publisher integration with mail/file scopes and a change ticket."
+> `correct_label`: "Benign — distinguished from the malicious app by registrant, publisher, ticket, and history, not by its scopes."
+> The report never mentions "App X" by name, but its core finding says: "The malicious app is distinguished from the tenant's other mail/file-scoped integrations by its registrant (a dormant external account), unverified publisher, and missing change ticket — the other integrations are long-standing, verified-publisher, ticketed, and registered by IT."
+> → `implicitly_handled`: **true**. `final_label`: `"not addressed in report (implicitly handled — distinguished by registrant/publisher/ticket/history from the malicious app)"`. `label_correct`: **true** (the stated criterion, applied to App X, yields "benign"). `cited_it`: **true** if App X's `decisive_evidence_collected` shows it actually meets that criterion (verified publisher, ticket, IT registrant, history) — the general criterion the report used matches what `decisive_evidence_description` calls decisive for this item.
+
 ## Step 1 — Locate the Hunter's statement about this item
 
-Search the ENTIRE report (summary, every finding, every open question) for any sentence that addresses this item — i.e., that draws a conclusion, raises a question, or otherwise takes a position on whatever `summary` describes.
+Search the ENTIRE report (summary, every finding, every open question) for any sentence that names or specifically references this item — i.e., that draws a conclusion, raises a question, or otherwise takes a position on whatever `summary` describes.
 
-- If you find one or more such statements, proceed to Steps 2 and 3 using the strongest/most conclusive statement.
-- If you find NOTHING that addresses this item anywhere in the report — do not guess, infer from silence, or assume the Hunter "must have" dismissed it because it didn't mention it — then:
+- If you find one or more such statements, set `implicitly_handled` to `false` and proceed to Steps 2 and 3 using the strongest/most conclusive statement.
+- If you find NOTHING that names or specifically references this item anywhere in the report, proceed to Step 1b before concluding anything — do not guess, infer from silence, or assume the Hunter "must have" dismissed it because it didn't mention it.
+
+## Step 1b — Implicit handling (only when Step 1 found nothing)
+
+Some items — typically benign look-alikes — can be correctly handled by omission. The report may state a general criterion that separates the real malicious thing from its look-alikes (e.g. "apps registered by IT under a change ticket, from a verified publisher, with an established history, are not part of this") without naming every look-alike individually.
+
+- If the report states such a general criterion, applying it to this item would clearly produce `correct_label`, and nothing else in the report contradicts that (e.g. the report doesn't lump this item in with what it escalates) — then:
+  - `implicitly_handled` = `true`
+  - `final_label` = `"not addressed in report (implicitly handled — <one-clause paraphrase of the general criterion>)"`
+  - `label_correct` = `true`
+  - `cited_it`: per Step 3, judged against the *general* criterion the report stated — `true` only if that criterion actually matches `decisive_evidence_description` for this item (not merely a surface trait the description calls out as insufficient).
+- Otherwise — the report states no such criterion, the criterion doesn't clearly cover this item, or something elsewhere contradicts it — then:
+  - `implicitly_handled` = `false`
   - `final_label` **must** be exactly `"not addressed in report"`.
-  - `label_correct` **must** be `false`. (`"not addressed in report"` is never correct — the Hunter's methodology requires every encountered thread to be confirmed, refuted, or carried into open questions.)
+  - `label_correct` **must** be `false`. (`"not addressed in report"` with no implicit handling is never correct — the Hunter's methodology requires every encountered thread to be confirmed, refuted, carried into open questions, or covered by a stated general criterion.)
   - `cited_it` **must** be `false`.
   - Write the rationale, then skip Steps 2 and 3.
 
@@ -51,10 +69,11 @@ Does the Hunter's statement show its conclusion is grounded in the decisive evid
 
 ## Output fields per item
 
-1. **`cited_it`** (boolean) — per Step 3.
-2. **`final_label`** (string, one sentence) — the Hunter's bottom-line statement about this item, or exactly `"not addressed in report"` per Step 1.
-3. **`label_correct`** (boolean) — per Step 2.
-4. **`rationale`** (string, 1-2 sentences) — quote or paraphrase the specific part of the report (or its absence) that justifies your `cited_it` and `label_correct` calls.
+1. **`cited_it`** (boolean) — per Step 3, or per Step 1b's `cited_it` rule when `implicitly_handled` is true.
+2. **`final_label`** (string, one sentence) — the Hunter's bottom-line statement about this item, exactly `"not addressed in report"` per Step 1b's fallback, or the paraphrased general criterion per Step 1b's implicit-handling form.
+3. **`label_correct`** (boolean) — per Step 2, or per Step 1b when nothing names this item.
+4. **`rationale`** (string, 1-2 sentences) — quote or paraphrase the specific part of the report (or its absence, or the general criterion) that justifies your `cited_it`, `label_correct`, and `implicitly_handled` calls.
+5. **`implicitly_handled`** (boolean) — `true` only via Step 1b's first branch (nothing names this item, but a stated general criterion correctly covers it). `false` whenever Step 1 found an explicit statement, or Step 1b's fallback applies.
 
 # Output format
 
