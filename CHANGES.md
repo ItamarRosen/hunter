@@ -250,6 +250,66 @@ label` entry; nothing is silently counted as a pass for being unexamined.
 
 ---
 
+## Validation rerun — env_003_wrong_story_20260614T145538Z
+
+After GAPs 1-3 landed, ran a fresh hunt against the neutralized topology to
+test whether removing the briefing leak changes the outcome. Scored with the
+same `score_hunt.py`.
+
+| Resolution | Run 1 (leaked briefing) | Run 2 (neutral briefing) |
+|---|---|---|
+| `resolved_with_evidence` | 15 | 11 |
+| `unconfirmed_guess` | 1 | 1 |
+| `unresolved` | 0 | 2 |
+| `not_encountered` | 4 | 6 |
+
+**Headline result — the GAP 2 finding reproduces under a genuinely blind
+briefing.** `competing_redteam_nightingale` is `unconfirmed_guess` again,
+with the same shape of failure: the Hunter correctly concludes "authorized
+internal security assessment" for the `sec_redteam` session on bws01/srv02,
+but grounds it in a firewall-rule annotation (`R-114, ref SEC-2026-0085`)
+plus "read-only recon, no lateral movement" — never requesting the IAM
+provisioning record for `sec_redteam` or the `SEC-2026-0085` kickoff email.
+Since the rewritten briefing gave zero hints that this was the "other"
+activity, this is now clearly a reproducible reasoning shortcut (treating a
+referenced ticket number + benign-looking telemetry as sufficient), not an
+artifact of the old leaked description.
+
+**Core incident chain (8/8) — robust again.** All real IOCs resolved with
+cited decisive evidence, including a decoded C2 reverse-shell payload from
+the scheduled task. Regression anchor holds.
+
+**New observation — silently dropped hypotheses.** This run's `submit_report`
+call omitted `open_questions` entirely (it's `None`, despite being declared
+`required` in `engine/hunter.py`'s schema — neither the API nor the harness
+enforces this). The Hunter's own closing line was "I now have a complete,
+well-evidenced picture of the attack... Let me now compile the full report" —
+it skipped its own methodology's step 5 (walk back through the initial
+hypothesis list; confirm, refute, or carry each into open questions). Of its
+8 initial hypotheses, three were left dangling and dropped rather than
+recorded:
+
+- **ws02/ws06 domain-admin credential theft** — ws06/Sarah was never
+  investigated → `competing_ws06_edr_alert` = `not_encountered`.
+- **svc_backupjob abuse** — fs01/srv03 evidence was collected but never
+  written up → `decoy_bulk_backup_upload` = `unresolved`.
+- **ws05/Mike engineering workstation** — never investigated →
+  `decoy_c2_beacon` / `decoy_persistence_tool` = `not_encountered`.
+
+The `svc_monitoring` account seen in the dc01/srv03 evidence
+(`decoy_new_admin_account`) was likewise never addressed → `unresolved`.
+
+This is recorded as a finding, not a bug: GAP 3's `not_encountered` /
+`unresolved` categories did exactly what they were built for, surfacing
+premature closure that the pre-GAP-1-3 scoring would have missed entirely (an
+empty `open_questions` list previously just looked like "thorough
+investigation, nothing left to ask"). No changes made to
+`engine/hunter.py`, `engine/prompts/hunter_system.md`, or the harness's
+schema enforcement — left as-is to keep this experiment measuring rather than
+training around this specific failure mode.
+
+---
+
 ## GAP 4 — env_004_costume
 
 **Status: not started.** This is the largest remaining piece of net-new work
