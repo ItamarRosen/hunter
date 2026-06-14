@@ -40,7 +40,7 @@ class GenerativeEvidenceCollector:
 
         response = self._client.messages.create(
             model=self._model,
-            max_tokens=4096,
+            max_tokens=8192,
             system=self._system_prompt,
             messages=messages,
         )
@@ -78,8 +78,9 @@ def _render_matcher_prompt(environment: Environment) -> str:
 def _parse_matcher_response(raw: str) -> dict:
     """Extract the JSON object the Matcher was instructed to return.
 
-    Falls back to treating the whole response as evidence data if the
-    model didn't return valid JSON — a single malformed turn shouldn't
+    Falls back to recovering just the "data" field if the response is
+    truncated or otherwise not valid JSON — a malformed or cut-off turn
+    shouldn't surface the raw JSON wrapper as evidence, and shouldn't
     crash the investigation.
     """
     match = re.search(r"\{.*\}", raw, re.DOTALL)
@@ -95,6 +96,20 @@ def _parse_matcher_response(raw: str) -> dict:
             }
         except json.JSONDecodeError:
             pass
+
+    data_match = re.search(r'"data"\s*:\s*"((?:[^"\\]|\\.)*)', raw, re.DOTALL)
+    if data_match:
+        try:
+            data = json.loads(f'"{data_match.group(1)}"')
+        except json.JSONDecodeError:
+            data = data_match.group(1)
+        return {
+            "found": True,
+            "data": data,
+            "note": None,
+            "embeds_ground_truth": False,
+            "ground_truth_refs": [],
+        }
 
     return {
         "found": True,

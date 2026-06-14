@@ -22,6 +22,7 @@ RUNS_DIR = ROOT / "runs"
 
 
 def main(environment_name: str) -> None:
+    sys.stdout.reconfigure(line_buffering=True)
     load_dotenv()
     client = anthropic.Anthropic()
 
@@ -29,20 +30,21 @@ def main(environment_name: str) -> None:
     collector = GenerativeEvidenceCollector(client, environment)
     hunter = HunterEngine(client, environment.topology, collector)
 
-    result = hunter.run()
-
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     run_dir = RUNS_DIR / f"{environment_name}_{timestamp}"
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    collection_log = [asdict(entry) for entry in collector.log]
+    def write_progress(transcript: list[dict]) -> None:
+        collection_log = [asdict(entry) for entry in collector.log]
+        (run_dir / "transcript.json").write_text(json.dumps(transcript, indent=2))
+        (run_dir / "collection_log.json").write_text(json.dumps(collection_log, indent=2))
+        (run_dir / "investigation_log.md").write_text(
+            render_investigation_log(transcript, collection_log, environment_name)
+        )
+
+    result = hunter.run(on_step=write_progress)
 
     (run_dir / "report.json").write_text(json.dumps(result.report, indent=2))
-    (run_dir / "transcript.json").write_text(json.dumps(result.transcript, indent=2))
-    (run_dir / "collection_log.json").write_text(json.dumps(collection_log, indent=2))
-    (run_dir / "investigation_log.md").write_text(
-        render_investigation_log(result.transcript, collection_log, environment_name)
-    )
 
     print(f"Run complete: {run_dir}")
     print(json.dumps(result.report, indent=2))

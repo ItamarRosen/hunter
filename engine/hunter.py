@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import anthropic
 
@@ -86,7 +86,7 @@ class HunterEngine:
         self._max_collections = max_collections
         self._system_prompt = HUNTER_PROMPT_PATH.read_text()
 
-    def run(self) -> HuntResult:
+    def run(self, on_step: Callable[[list[dict]], None] | None = None) -> HuntResult:
         messages: list[dict] = [
             {
                 "role": "user",
@@ -101,6 +101,8 @@ class HunterEngine:
 
         collections_used = 0
         max_rounds = self._max_collections * 2
+
+        print(f"=== Hunt started — budget: {self._max_collections} collect_evidence calls ===\n")
 
         for round_num in range(max_rounds + 1):
             budget_exhausted = collections_used >= self._max_collections or round_num == max_rounds
@@ -120,11 +122,20 @@ class HunterEngine:
                 tool_choice=tool_choice,
             )
             messages.append({"role": "assistant", "content": [_block_to_dict(b) for b in response.content]})
+            if on_step:
+                on_step(messages)
+
+            for block in response.content:
+                if block.type == "text" and block.text.strip():
+                    print(block.text.strip() + "\n")
 
             tool_uses = [b for b in response.content if b.type == "tool_use"]
 
             report_block = next((b for b in tool_uses if b.name == "submit_report"), None)
             if report_block is not None:
+                _print_report(report_block.input)
+                if on_step:
+                    on_step(messages)
                 return HuntResult(report=report_block.input, transcript=messages)
 
             if not tool_uses:
@@ -132,15 +143,27 @@ class HunterEngine:
                     "role": "user",
                     "content": "Continue your investigation, or call submit_report to finish.",
                 })
+                if on_step:
+                    on_step(messages)
                 continue
 
             tool_results = []
             for block in tool_uses:
                 collections_used += 1
-                evidence = self._collector.collect(
-                    device_id=block.input["device_id"],
-                    request=block.input["request"],
-                )
+                device_id = block.input["device_id"]
+                request = block.input["request"]
+                print(f"[{collections_used}/{self._max_collections}] collect_evidence({device_id}): {request}")
+
+                evidence = self._collector.collect(device_id=device_id, request=request)
+
+                status = "found" if evidence.found else "not found"
+                note = f" — {evidence.note}" if evidence.note else ""
+                preview = " ".join(evidence.data.split())
+                if len(preview) > 200:
+                    preview = preview[:200] + "..."
+                print(f"    -> {status}{note}")
+                print(f"    {preview}\n")
+
                 tool_results.append({
                     "type": "tool_result",
                     "tool_use_id": block.id,
@@ -151,9 +174,35 @@ class HunterEngine:
                     }),
                 })
             messages.append({"role": "user", "content": tool_results})
+            if on_step:
+                on_step(messages)
 
         # Unreachable: the final round forces submit_report.
         return HuntResult(report=None, transcript=messages)
+
+
+def _print_report(report: dict) -> None:
+    print("=== Final report ===\n")
+    print(report.get("summary", ""))
+
+    findings = report.get("findings", [])
+    if findings:
+        print("\nFindings:")
+        for i, finding in enumerate(findings, 1):
+            devices = ", ".join(finding.get("affected_devices", []))
+            print(
+                f"  {i}. [{finding.get('severity')}/{finding.get('confidence')}] "
+                f"{finding['title']} (devices: {devices})"
+            )
+            print(f"     {finding.get('evidence', '')}")
+    else:
+        print("\nNo findings.")
+
+    open_questions = report.get("open_questions", [])
+    if open_questions:
+        print("\nOpen questions:")
+        for q in open_questions:
+            print(f"  - {q}")
 
 
 def _block_to_dict(block: Any) -> dict:
