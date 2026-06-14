@@ -1,0 +1,43 @@
+{
+  "environment": "env_004_cloud_identity_lotl",
+  "tags": {
+    "anomalous_interactive_signin": {"tier": "FEED", "category": "core_incident", "device_id": "entra01"},
+    "oauth_app_registration": {"tier": "FEED", "category": "core_incident", "device_id": "entra01"},
+    "decoy_corpvault_backup": {"tier": "FEED", "category": "decoy", "device_id": "entra01"},
+    "decoy_onna_ediscovery": {"tier": "FEED", "category": "decoy", "device_id": "entra01"},
+    "decoy_hubspot_connector": {"tier": "FEED", "category": "decoy", "device_id": "entra01"},
+    "decoy_powerbi_finance": {"tier": "FEED", "category": "decoy", "device_id": "entra01"},
+    "decoy_expense_insights": {"tier": "FEED", "category": "decoy", "device_id": "entra01"},
+    "competing_pentest_pt2026_03": {"tier": "FEED", "category": "competing_narrative", "device_id": "entra01"},
+    "competing_spray": {"tier": "FEED", "category": "competing_narrative", "device_id": "entra01"},
+
+    "account_provenance": {"tier": "ON_DEMAND", "category": "core_incident", "device_id": "entra01"},
+    "oauth_consent_grant": {"tier": "ON_DEMAND", "category": "core_incident", "device_id": "entra01"},
+    "sp_data_access": {"tier": "ON_DEMAND", "category": "core_incident", "device_id": "entra01"},
+    "competing_pentest_pt2026_03_auth": {"tier": "ON_DEMAND", "category": "competing_narrative", "device_id": "itsm01"},
+    "competing_spray_zero_success": {"tier": "ON_DEMAND", "category": "competing_narrative", "device_id": "entra01"},
+
+    "evidence_gap_mailitemsaccessed": {"tier": "GAP", "category": "evidence_gap", "device_id": "exo01"}
+  },
+
+  "feed_baseline": [
+    "Roughly 40 other low/medium-risk Identity Protection 'unfamiliar sign-in properties' / 'atypical travel' flags across the tenant this week, from legitimately traveling or remote/WFH staff using new devices, hotel/airport Wi-Fi, or VPN exit nodes -- ordinary interactive sign-ins with risk Low/Medium, no follow-on activity.",
+    "Normal interactive sign-in volume for the ~150-account tenant (staff, IT/admin, service accounts, and a handful of external/guest/contractor accounts), business-hours pattern, mostly from corporate IP ranges and known devices.",
+    "The tenant's ~15 active app registrations/service principals as a whole -- besides the 5 named benign integrations and the two apps tied to the incident/pentest, a handful of unremarkable internal tools (Teams add-ins, calendar-sync utilities) with narrow scopes and no mail/file access.",
+    "Routine mail flow for ~150 Exchange Online mailboxes; the shared receipts@corp.com mailbox receiving routine forwarded receipts from Finance staff.",
+    "Ordinary business-hours SharePoint Online activity across ~30 sites (Finance Reporting, HR, departmental sites, Project Atlas) at normal/low volume.",
+    "Routine change tickets and vendor/engagement records on itsm01 (e.g. the CHG tickets for the benign apps, the IT-2025-0734 MFA-exception record, the PT-2026-03 engagement record) -- list-level visibility only, not the full record contents.",
+    "Routine dc01/on-prem AD activity and Entra Connect sync cycles every 30 minutes, reflecting on-prem account changes into the tenant.",
+    "Normal outbound traffic from fw01/on-prem hosts to common SaaS/cloud destinations -- nothing related to the incident traverses this on-prem firewall.",
+    "Clean EDR/endpoint telemetry on ws01 (jdoe's admin workstation) -- normal day-to-day M365/Entra ID administration activity, no malware or unusual processes."
+  ],
+
+  "leak_probes": {
+    "account_provenance": ["Hartwell", "FY2025 external audit", "legacy-auth exception", "2025-09-03"],
+    "oauth_consent_grant": ["8f2c1e4a-91b6-4d2a-9e3f-7a1c5d6e2b90", "consent type **user**", "60-second window"],
+    "sp_data_access": ["GET /users/{id}/messages", "ProjectAtlas/Shared Documents", "client-credential sign-ins", "10-30 calls/day"],
+    "competing_pentest_pt2026_03_auth": ["Vantage Assurance Partners", "External Cloud Penetration Test", "approved by the CISO"],
+    "competing_spray_zero_success": ["Zero successful authentications", "90 days", "sign-in log retention"],
+    "evidence_gap_mailitemsaccessed": ["MailItemsAccessed", "Purview", "30-day retention"]
+  }
+}

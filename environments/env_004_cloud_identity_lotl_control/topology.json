@@ -1,0 +1,80 @@
+{
+  "name": "Hybrid identity environment — corp.local / corp.com",
+  "description": "A mid-sized organization with hybrid identity: an on-premises Active Directory domain (corp.local) — a perimeter firewall, a domain controller, and staff workstations — synced via Microsoft Entra Connect to a Microsoft Entra ID / Microsoft 365 tenant (corp.com) comprising Exchange Online, SharePoint Online, and a GRC/ITSM platform used for change management and engagement records.",
+  "current_date": "2026-06-12",
+  "segments": [
+    {
+      "id": "on-prem",
+      "description": "On-premises corp.local Active Directory domain and LAN. Address range 10.10.0.0/16."
+    },
+    {
+      "id": "cloud",
+      "description": "The corp.com Microsoft Entra ID / Microsoft 365 tenant, hybrid-joined to corp.local via Microsoft Entra Connect."
+    }
+  ],
+  "devices": [
+    {
+      "id": "fw01",
+      "hostname": "EDGE-FW01",
+      "role": "perimeter firewall",
+      "os": "vendor appliance (firewall/router)",
+      "ip": "203.0.113.10",
+      "segment": "on-prem",
+      "notes": "Internet-facing edge device for the on-premises network. NATs outbound traffic and provides a VPN gateway for remote staff access to on-prem resources."
+    },
+    {
+      "id": "dc01",
+      "hostname": "CORP-DC01",
+      "role": "domain controller",
+      "os": "Windows Server 2022",
+      "ip": "10.10.0.10",
+      "segment": "on-prem",
+      "notes": "Primary Active Directory domain controller for corp.local. Also runs DNS for the internal network. Synced to the corp.com Microsoft Entra ID tenant via Microsoft Entra Connect (hybrid identity) — most on-prem accounts have a corresponding cloud identity."
+    },
+    {
+      "id": "ws01",
+      "hostname": "IT-JDOE",
+      "role": "workstation",
+      "os": "Windows 11",
+      "ip": "10.10.10.12",
+      "segment": "on-prem",
+      "notes": "Primary workstation for an IT administrator (jdoe) who handles day-to-day Microsoft 365 / Entra ID administration — app registrations, licensing, and access requests — alongside on-prem AD tasks."
+    },
+    {
+      "id": "entra01",
+      "hostname": "corp.com (Microsoft Entra ID / Microsoft 365 tenant)",
+      "role": "cloud identity provider and M365 admin center",
+      "os": "SaaS — Microsoft Entra ID",
+      "ip": "n/a — cloud service",
+      "segment": "cloud",
+      "notes": "Identity provider for the corp.com Microsoft 365 tenant, hybrid-joined to corp.local via Microsoft Entra Connect. Exposes interactive and service-principal sign-in logs, Entra ID audit logs (account, application, and consent changes), Identity Protection risk detections, conditional access policies, and the tenant's app/service-principal registry (registrations, delegated and application permission grants, consents). Roughly 150 user accounts, including staff, IT/admin accounts, service accounts, and a number of external/guest and contractor accounts (e.g. for auditors, vendors, and consultants) granted for the duration of their engagements."
+    },
+    {
+      "id": "exo01",
+      "hostname": "corp.com (Exchange Online)",
+      "role": "cloud email and calendaring",
+      "os": "SaaS — Exchange Online",
+      "ip": "n/a — cloud service",
+      "segment": "cloud",
+      "notes": "Hosts mailboxes for all corp.com users, including the executive team and staff working on an active M&A workstream. Supports mailbox-level audit logging (e.g. MailItemsAccessed) and message tracing."
+    },
+    {
+      "id": "spo01",
+      "hostname": "corp.com (SharePoint Online)",
+      "role": "cloud document storage and collaboration",
+      "os": "SaaS — SharePoint Online",
+      "ip": "n/a — cloud service",
+      "segment": "cloud",
+      "notes": "Hosts departmental and project SharePoint sites, including sites supporting the M&A workstream referenced above. Site-level access is logged via the SharePoint access/audit log."
+    },
+    {
+      "id": "itsm01",
+      "hostname": "GRC / IT service management platform",
+      "role": "change management, ticketing, and vendor/engagement records",
+      "os": "SaaS — ITSM/GRC platform",
+      "ip": "n/a — cloud service",
+      "segment": "cloud",
+      "notes": "System of record for change tickets, security engagement records (e.g. third-party assessments/penetration tests), and vendor/contractor access requests across both the on-prem and cloud environments."
+    }
+  ]
+}

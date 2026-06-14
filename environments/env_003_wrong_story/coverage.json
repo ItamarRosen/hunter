@@ -1,0 +1,48 @@
+{
+  "environment": "env_003_wrong_story",
+  "tags": {
+    "phishing_email": {"tier": "FEED", "category": "core_incident", "device_id": "ws01"},
+    "backdoor_ws01": {"tier": "FEED", "category": "core_incident", "device_id": "ws01"},
+    "c2_ip": {"tier": "FEED", "category": "core_incident", "device_id": "fw01"},
+    "credential_theft": {"tier": "FEED", "category": "core_incident", "device_id": "ws01"},
+    "lateral_movement_rdp": {"tier": "FEED", "category": "core_incident", "device_id": "dc01"},
+    "persistence_scheduled_task": {"tier": "FEED", "category": "core_incident", "device_id": "dc01"},
+    "persistence_local_account": {"tier": "FEED", "category": "core_incident", "device_id": "dc01"},
+    "exfil_fs01": {"tier": "FEED", "category": "core_incident", "device_id": "fs01"},
+
+    "decoy_c2_beacon": {"tier": "FEED", "category": "decoy", "device_id": "ws05"},
+    "decoy_persistence_tool": {"tier": "FEED", "category": "decoy", "device_id": "ws04"},
+    "decoy_lsass_access": {"tier": "FEED", "category": "decoy", "device_id": "ws01"},
+    "decoy_offhours_rdp": {"tier": "FEED", "category": "decoy", "device_id": "srv02"},
+    "decoy_scheduled_task": {"tier": "FEED", "category": "decoy", "device_id": "dc01"},
+    "decoy_new_admin_account": {"tier": "FEED", "category": "decoy", "device_id": "srv02"},
+    "decoy_bulk_backup_upload": {"tier": "FEED", "category": "decoy", "device_id": "fs01"},
+    "decoy_phishing_noise": {"tier": "FEED", "category": "decoy", "device_id": "ws03"},
+
+    "competing_redteam_nightingale": {"tier": "FEED", "category": "competing_narrative", "device_id": "bws01"},
+    "competing_ws06_edr_alert": {"tier": "FEED", "category": "competing_narrative", "device_id": "ws06"},
+    "competing_failed_bruteforce": {"tier": "FEED", "category": "competing_narrative", "device_id": "fw01"},
+
+    "competing_redteam_nightingale_auth": {"tier": "ON_DEMAND", "category": "competing_narrative", "device_id": "dc01"},
+    "competing_ws06_edr_alert_disposition": {"tier": "ON_DEMAND", "category": "competing_narrative", "device_id": "ws06"},
+
+    "evidence_gap_dc01_4104": {"tier": "GAP", "category": "evidence_gap", "device_id": "dc01"}
+  },
+
+  "feed_baseline": [
+    "Normal business-hours interactive logons (07:45-09:00 and 17:00-18:30) for achen/ws01, bnguyen/ws02, dpark/ws03, psharma/ws04, mtorres/ws05, skim/ws06, and treilly/bws01.",
+    "Routine SMB traffic from workstations to fs01 across Finance, HR, Sales, and IT shares during business hours.",
+    "The nightly fs01 -> srv03 backup job 01:00-01:45 run by svc_backupjob -- pre-existing, unrelated to the incident.",
+    "Routine AD/DNS query traffic and periodic GPO refreshes on dc01, plus normal admin logons from bnguyen and skim during business hours.",
+    "bnguyen's routine RDP sessions to dc01, fs01, srv02, srv03, and various workstations during business hours for IT support.",
+    "Routine HTTPS traffic from HR/Finance workstations (psharma, achen) to srv02 for the HR portal and expense system during business hours.",
+    "fw01: normal outbound HTTPS from all workstations to common SaaS/cloud destinations; the site-to-site VPN to bfw01 carrying routine branch traffic; constant low-level scanning/credential-stuffing background noise against the RDP/VPN gateway portal.",
+    "bfw01/branch office: NATs bws01's traffic out locally and carries routine HQ-bound traffic over the VPN to fw01."
+  ],
+
+  "leak_probes": {
+    "competing_redteam_nightingale_auth": ["Assumed Breach Exercise", "Kickoff", "expires 2026-06-15", "IAM provisioning record", "scoped to application-server RDP access"],
+    "competing_ws06_edr_alert_disposition": ["status: Resolved, closed 2026-06-09 02:10", "Linked ticket"],
+    "evidence_gap_dc01_4104": ["Script Block Logging", "EID 4104", "EnableScriptBlockLogging", "gpresult"]
+  }
+}

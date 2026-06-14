@@ -86,7 +86,12 @@ class HunterEngine:
         self._max_collections = max_collections
         self._system_prompt = HUNTER_PROMPT_PATH.read_text()
 
-    def run(self, on_step: Callable[[list[dict]], None] | None = None) -> HuntResult:
+    def run(
+        self,
+        on_step: Callable[[list[dict]], None] | None = None,
+        task_framing: str | None = None,
+    ) -> HuntResult:
+        closing = task_framing or "Begin."
         messages: list[dict] = [
             {
                 "role": "user",
@@ -94,7 +99,7 @@ class HunterEngine:
                     "Network topology:\n"
                     f"{json.dumps(self._topology, indent=2)}\n\n"
                     f"You have up to {self._max_collections} collect_evidence calls "
-                    "for this investigation. Begin."
+                    f"for this investigation. {closing}"
                 ),
             }
         ]

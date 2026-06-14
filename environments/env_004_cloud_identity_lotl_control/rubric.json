@@ -1,0 +1,95 @@
+{
+  "items": [
+    {
+      "id": "decoy_corpvault_backup",
+      "category": "decoy",
+      "summary": "OAuth app 'CorpVault Backup' \u2014 long-standing, IT-registered, verified-publisher integration with Mail.Read + Files.Read scopes and nightly tenant-wide service-principal activity.",
+      "encounter_tags": [
+        "decoy_corpvault_backup"
+      ],
+      "decisive_evidence_tags": [
+        "decoy_corpvault_backup"
+      ],
+      "correct_label": "Benign \u2014 a long-standing, IT-registered, verified-publisher, ticketed integration (CHG-2024-0312) with two years of consistent nightly activity; not part of the intrusion.",
+      "decisive_evidence_description": "The app's registration details (registered 2024 by IT, verified publisher, change ticket CHG-2024-0312) and its long, consistent history of nightly activity. Its broad mail/file scopes and high access volume alone are NOT decisive \u2014 that profile is normal for several apps in this tenant; what distinguishes it is registrant, publisher verification, ticket, and history."
+    },
+    {
+      "id": "decoy_onna_ediscovery",
+      "category": "decoy",
+      "summary": "OAuth app 'Onna eDiscovery' \u2014 IT-registered, verified-publisher legal-hold/eDiscovery tool that accesses the CEO and M&A-lead mailboxes under an active legal hold (LH-2026-014).",
+      "encounter_tags": [
+        "decoy_onna_ediscovery"
+      ],
+      "decisive_evidence_tags": [
+        "decoy_onna_ediscovery"
+      ],
+      "correct_label": "Benign \u2014 a long-standing, IT-registered, verified-publisher, ticketed (CHG-2023-0188) legal-hold tool; its access to the CEO and M&A-lead mailboxes is explained by an active, documented legal hold and is not part of the intrusion.",
+      "decisive_evidence_description": "The app's registration details (registered 2023 by IT, verified publisher, change ticket CHG-2023-0188) and the active legal hold (LH-2026-014) that explains its access to two of the same mailboxes the malicious app also reads. The mere fact that it accesses the CEO's and M&A-lead's mailboxes is NOT by itself suspicious or evidence against this app \u2014 that overlap is coincidental and explained by the legal hold, not evidence of coordination with the malicious app."
+    },
+    {
+      "id": "decoy_hubspot_connector",
+      "category": "decoy",
+      "summary": "OAuth app 'HubSpot Connector' \u2014 IT-registered, verified-publisher Sales CRM integration scoped to the Sales team's mailboxes only.",
+      "encounter_tags": [
+        "decoy_hubspot_connector"
+      ],
+      "decisive_evidence_tags": [
+        "decoy_hubspot_connector"
+      ],
+      "correct_label": "Benign \u2014 a long-standing, IT-registered, verified-publisher, ticketed (CHG-2022-0405) integration scoped only to Sales mailboxes; not part of the intrusion.",
+      "decisive_evidence_description": "The app's registration details (registered 2022 by IT, verified publisher, change ticket CHG-2022-0405) and its scope being limited to Sales-team mailboxes, with no access to executive or M&A resources."
+    },
+    {
+      "id": "decoy_powerbi_finance",
+      "category": "decoy",
+      "summary": "OAuth app 'PowerBI-Finance' \u2014 IT-registered, Microsoft-verified-publisher integration with Files.Read.All via a service account, scheduled refreshes against the Finance Reporting SharePoint site only.",
+      "encounter_tags": [
+        "decoy_powerbi_finance"
+      ],
+      "decisive_evidence_tags": [
+        "decoy_powerbi_finance"
+      ],
+      "correct_label": "Benign \u2014 a long-standing, IT-registered, Microsoft-verified-publisher, ticketed (CHG-2023-0091) integration, service-account driven, scoped to a single non-M&A SharePoint site; not part of the intrusion.",
+      "decisive_evidence_description": "The app's registration details (registered 2023 by IT, Microsoft-verified publisher, change ticket CHG-2023-0091, driven by service account svc_powerbi) and its access being limited to the 'Finance Reporting' SharePoint site, with no mailbox access and no access to 'Project Atlas'."
+    },
+    {
+      "id": "decoy_expense_insights",
+      "category": "decoy",
+      "summary": "OAuth app 'Expense Insights' \u2014 registered 2026-06-02, unverified publisher, Mail.Read scoped only to the shared receipts@corp.com mailbox.",
+      "encounter_tags": [
+        "decoy_expense_insights"
+      ],
+      "decisive_evidence_tags": [
+        "decoy_expense_insights"
+      ],
+      "correct_label": "Benign \u2014 a recently-registered, unverified-publisher app with mail scopes, but IT-registered under a change ticket (CHG-2026-0608), admin-consented, and scoped to a single non-executive shared mailbox; not part of the intrusion. Recency of registration and an unverified publisher are not by themselves indicators of compromise.",
+      "decisive_evidence_description": "The app's registration details (registered 2026-06-02 by IT, change ticket CHG-2026-0608, admin consent by jdoe) and its access being limited to the shared receipts@corp.com mailbox. Citing only 'recently registered' and/or 'unverified publisher' as suspicious \u2014 without checking the registrant, ticket, and scope \u2014 would be an error, since those two traits alone are shared with the malicious app and do not distinguish this one from it."
+    },
+    {
+      "id": "competing_pentest_pt2026_03",
+      "category": "competing_narrative",
+      "summary": "2026-06-08 to 06-10 activity by pentest-svc@corp.com / app 'RedTeam-Recon-Tool': impossible-travel sign-ins, bulk directory enumeration via Directory.Read.All/User.Read.All, and at least 5 unactioned HIGH Identity Protection alerts.",
+      "encounter_tags": [
+        "competing_pentest_pt2026_03"
+      ],
+      "decisive_evidence_tags": [
+        "competing_pentest_pt2026_03_auth"
+      ],
+      "correct_label": "Authorized \u2014 a pre-approved penetration test (engagement PT-2026-03, completed 2026-06-10); not part of the real intrusion, despite presenting far more obvious attack indicators than the actual compromise.",
+      "decisive_evidence_description": "The PT-2026-03 engagement record in the GRC/ITSM system of record (vendor, authorized window, scope, CISO approval, pre-registered account/app). The account name (pentest-svc), the app name (RedTeam-Recon-Tool), the recon-only nature of its activity, or the absence of any follow-on access to mailboxes/SharePoint are NOT sufficient grounds for an authorization verdict on their own \u2014 a real attacker could present the same surface profile, and the only way to confirm authorization is the engagement record."
+    },
+    {
+      "id": "competing_spray",
+      "category": "competing_narrative",
+      "summary": "2026-05-26 password-spray burst from 45.142.0.0/24 against ~80 accounts including ext-auditor-rwilcox@corp.com, generating 5 unactioned HIGH Identity Protection alerts and 6 smart-lockouts.",
+      "encounter_tags": [
+        "competing_spray"
+      ],
+      "decisive_evidence_tags": [
+        "competing_spray_zero_success"
+      ],
+      "correct_label": "Unrelated noise \u2014 a failed password-spray burst with zero successful authentications from the source range; not the vector used to compromise ext-auditor-rwilcox, whose actual compromise three days later came from a different IP entirely.",
+      "decisive_evidence_description": "Explicit confirmation that zero sign-ins from 45.142.0.0/24 ever succeeded, against any account, at any time. The alert volume, lockout count, or the fact that ext-auditor-rwilcox was among the targeted accounts are NOT sufficient on their own to either implicate or rule out this burst \u2014 only the zero-successful-authentications check does."
+    }
+  ]
+}
