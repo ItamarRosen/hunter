@@ -1,0 +1,15 @@
+[tool.poetry]
+name = "hunter"
+version = "0.1.0"
+description = "Autonomous threat-hunting reasoning engine"
+authors = ["Itamar Rosen"]
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.12"
+anthropic = "0.109.1"
+python-dotenv = "1.0.1"
+
+[build-system]
+requires = ["poetry-core>=2.0"]
+build-backend = "poetry.core.masonry.api"
