@@ -1,0 +1,138 @@
+{
+  "name": "env_003_wrong_story",
+  "description": "Same mid-sized corporate network as env_001/env_002 (perimeter firewall, domain controller, six workstations across multiple departments, a file server, an internal app server, a backup server, and a branch office over site-to-site VPN), with a third layer of concurrent security activity — including a louder, EDR-alerting incident at the branch office — that competes for the investigator's attention.",
+  "current_date": "2026-06-12",
+  "segments": [
+    {
+      "id": "perimeter",
+      "description": "Internet-facing edge."
+    },
+    {
+      "id": "corp-lan",
+      "description": "Internal corporate LAN — workstations, domain controller, file server, and internal application/backup servers. Address range 10.10.0.0/16."
+    },
+    {
+      "id": "branch-office",
+      "description": "Small remote branch office LAN, reached from HQ via a site-to-site VPN terminated on fw01. Address range 10.20.0.0/16."
+    }
+  ],
+  "devices": [
+    {
+      "id": "fw01",
+      "hostname": "EDGE-FW01",
+      "role": "perimeter firewall",
+      "os": "vendor appliance (firewall/router)",
+      "ip": "203.0.113.1",
+      "segment": "perimeter",
+      "notes": "Internet-facing edge device. NATs internal traffic out. Inbound rules: a site-to-site VPN tunnel to the branch office firewall (bfw01), and an RDP/VPN gateway portal for remote access."
+    },
+    {
+      "id": "dc01",
+      "hostname": "CORP-DC01",
+      "role": "domain controller",
+      "os": "Windows Server 2022",
+      "ip": "10.10.0.10",
+      "segment": "corp-lan",
+      "notes": "Primary Active Directory domain controller for corp.local. Also runs DNS for the internal network."
+    },
+    {
+      "id": "ws01",
+      "hostname": "FIN-ALICE",
+      "role": "workstation",
+      "os": "Windows 11",
+      "ip": "10.10.10.21",
+      "segment": "corp-lan",
+      "notes": "Primary workstation for Alice Chen, Finance analyst."
+    },
+    {
+      "id": "ws02",
+      "hostname": "IT-BOB",
+      "role": "workstation",
+      "os": "Windows 11",
+      "ip": "10.10.10.35",
+      "segment": "corp-lan",
+      "notes": "Primary workstation for Bob Nguyen, IT administrator. Bob holds domain admin rights and regularly remotes into servers and other workstations for support."
+    },
+    {
+      "id": "fs01",
+      "hostname": "CORP-FS01",
+      "role": "file server",
+      "os": "Windows Server 2019",
+      "ip": "10.10.0.20",
+      "segment": "corp-lan",
+      "notes": "Hosts SMB shares for the Finance, HR, Sales, and IT departments, including a Finance\\Confidential share."
+    },
+    {
+      "id": "ws03",
+      "hostname": "SALES-DAVE",
+      "role": "workstation",
+      "os": "Windows 11",
+      "ip": "10.10.10.42",
+      "segment": "corp-lan",
+      "notes": "Primary workstation for David Park, Sales account executive. Uses CRM SaaS tools and email heavily."
+    },
+    {
+      "id": "ws04",
+      "hostname": "HR-PRIYA",
+      "role": "workstation",
+      "os": "Windows 11",
+      "ip": "10.10.10.53",
+      "segment": "corp-lan",
+      "notes": "Primary workstation for Priya Sharma, HR generalist. Has access to payroll and personnel records on srv02."
+    },
+    {
+      "id": "ws05",
+      "hostname": "ENG-MIKE",
+      "role": "workstation",
+      "os": "Windows 11",
+      "ip": "10.10.10.67",
+      "segment": "corp-lan",
+      "notes": "Primary workstation for Mike Torres, software engineer. Holds local admin rights for development work; runs various dev/CI tooling and SaaS agents."
+    },
+    {
+      "id": "ws06",
+      "hostname": "IT-SARAH",
+      "role": "workstation",
+      "os": "Windows 11",
+      "ip": "10.10.10.39",
+      "segment": "corp-lan",
+      "notes": "Primary workstation for Sarah Kim, IT/security analyst. Holds domain admin rights alongside Bob Nguyen, manages the EDR console, and periodically runs security-validation exercises."
+    },
+    {
+      "id": "srv02",
+      "hostname": "CORP-APP01",
+      "role": "application server",
+      "os": "Windows Server 2022",
+      "ip": "10.10.0.30",
+      "segment": "corp-lan",
+      "notes": "Hosts the internal HR portal and expense-reporting application, used by HR and Finance staff during business hours."
+    },
+    {
+      "id": "srv03",
+      "hostname": "CORP-BKP01",
+      "role": "backup server",
+      "os": "Windows Server 2019",
+      "ip": "10.10.0.40",
+      "segment": "corp-lan",
+      "notes": "Runs the nightly backup job (account svc_backupjob) that reads all departmental shares from fs01, and a weekly job that uploads compressed backups to an external cloud backup provider."
+    },
+    {
+      "id": "bfw01",
+      "hostname": "BRANCH-FW01",
+      "role": "branch firewall",
+      "os": "vendor appliance (firewall/router)",
+      "ip": "198.51.100.1",
+      "segment": "branch-office",
+      "notes": "Branch office edge device. NATs branch traffic out and terminates the site-to-site VPN tunnel back to fw01 at HQ."
+    },
+    {
+      "id": "bws01",
+      "hostname": "BRANCH-TOM",
+      "role": "workstation",
+      "os": "Windows 11",
+      "ip": "10.20.10.15",
+      "segment": "branch-office",
+      "notes": "Primary workstation for Tom Reilly, regional sales rep at the branch office. Accesses HQ resources over the site-to-site VPN."
+    }
+  ]
+}
