@@ -1,0 +1,185 @@
+{
+  "environment": "env_003_wrong_story",
+  "items": [
+    {
+      "id": "phishing_email",
+      "category": "core_incident",
+      "summary": "Initial access: phishing email \"Invoice #84512 — Payment Overdue\" with macro attachment, opened on ws01.",
+      "encounter_tags": ["phishing_email"],
+      "decisive_evidence_tags": ["phishing_email"],
+      "correct_label": "Part of the real intrusion — the initial access vector. Should be reported as a finding (phishing/macro-malware delivery on ws01).",
+      "decisive_evidence_description": "The phishing email and macro-enabled attachment (Invoice_84512.xlsm) and its role in dropping the backdoor on ws01."
+    },
+    {
+      "id": "backdoor_ws01",
+      "category": "core_incident",
+      "summary": "Dropped backdoor winupdate32.exe + Run-key persistence on ws01.",
+      "encounter_tags": ["backdoor_ws01"],
+      "decisive_evidence_tags": ["backdoor_ws01"],
+      "correct_label": "Part of the real intrusion — the dropped backdoor and Run-key persistence on ws01. Should be reported as a finding.",
+      "decisive_evidence_description": "The dropped winupdate32.exe binary and its Run-key persistence entry (WindowsUpdateHelper) on ws01."
+    },
+    {
+      "id": "c2_ip",
+      "category": "core_incident",
+      "summary": "C2 channel to 185.220.101.47 from ws01 (~5min beacon) and dc01 (daily 03:00).",
+      "encounter_tags": ["c2_ip"],
+      "decisive_evidence_tags": ["c2_ip"],
+      "correct_label": "Part of the real intrusion — the attacker's C2 infrastructure, contacted from both ws01 and dc01. Should be reported as a finding (active C2 channel).",
+      "decisive_evidence_description": "Outbound connections to 185.220.101.47 from ws01 (~5-minute beacon) and/or dc01 (daily 03:00)."
+    },
+    {
+      "id": "credential_theft",
+      "category": "core_incident",
+      "summary": "LSASS dump on ws01 via rundll32/comsvcs.dll MiniDump, yielding bnguyen's cached domain admin credentials.",
+      "encounter_tags": ["credential_theft"],
+      "decisive_evidence_tags": ["credential_theft"],
+      "correct_label": "Part of the real intrusion — the credential-theft step that yielded bnguyen's domain admin credentials. Should be reported as a finding.",
+      "decisive_evidence_description": "The LSASS access on ws01 via rundll32/comsvcs.dll MiniDump (svchost_helper.exe), ~02:14 on 2026-06-09."
+    },
+    {
+      "id": "lateral_movement_rdp",
+      "category": "core_incident",
+      "summary": "RDP (logon type 10) to dc01 from ws01's IP as CORP\\bnguyen, ~02:31 2026-06-09, off-hours.",
+      "encounter_tags": ["lateral_movement_rdp"],
+      "decisive_evidence_tags": ["lateral_movement_rdp"],
+      "correct_label": "Part of the real intrusion — lateral movement to the domain controller using stolen bnguyen credentials. Should be reported as a finding, with the anomaly framed as the unusual time + source for this account, not the account or destination alone.",
+      "decisive_evidence_description": "The RDP logon (type 10) to dc01 from ws01's IP (10.10.10.21) as CORP\\bnguyen at ~02:31 on 2026-06-09, off-hours and from a different workstation than Bob's own."
+    },
+    {
+      "id": "persistence_scheduled_task",
+      "category": "core_incident",
+      "summary": "Malicious scheduled task MicrosoftEdgeUpdateTaskMachine on dc01, runs powershell.exe -enc daily at 03:00.",
+      "encounter_tags": ["persistence_scheduled_task"],
+      "decisive_evidence_tags": ["persistence_scheduled_task"],
+      "correct_label": "Part of the real intrusion — SYSTEM-level scheduled-task persistence on the domain controller. Should be reported as a finding, distinguished from the benign MicrosoftEdgeUpdateTaskMachineCore task.",
+      "decisive_evidence_description": "The scheduled task MicrosoftEdgeUpdateTaskMachine on dc01 (no 'Core' suffix), running powershell.exe -enc daily at 03:00."
+    },
+    {
+      "id": "persistence_local_account",
+      "category": "core_incident",
+      "summary": "New local admin account svc_backup created on dc01 as secondary persistence.",
+      "encounter_tags": ["persistence_local_account"],
+      "decisive_evidence_tags": ["persistence_local_account"],
+      "correct_label": "Part of the real intrusion — a new local admin account created on the domain controller as a secondary persistence mechanism. Should be reported as a finding, distinguished from the unrelated svc_monitoring accounts on srv02/srv03.",
+      "decisive_evidence_description": "The svc_backup local admin account created on dc01 during the malicious RDP session."
+    },
+    {
+      "id": "exfil_fs01",
+      "category": "core_incident",
+      "summary": "Finance\\Confidential documents staged on dc01, zipped, and exfiltrated to 185.220.101.47.",
+      "encounter_tags": ["exfil_fs01"],
+      "decisive_evidence_tags": ["exfil_fs01"],
+      "correct_label": "Part of the real intrusion — exfiltration of Finance/M&A documents via the dc01 session. Should be reported as a finding, distinguished from the routine weekly cloud-backup job.",
+      "decisive_evidence_description": "SMB access to \\\\CORP-FS01\\Finance\\Confidential from dc01 under bnguyen, staging at C:\\Windows\\Temp\\sysdiag\\ and upload to 185.220.101.47."
+    },
+    {
+      "id": "decoy_c2_beacon",
+      "category": "decoy",
+      "summary": "ws05's signed dev-telemetry agent beacons to a clean, reputable AWS-hosted destination at a similar cadence to the real C2.",
+      "encounter_tags": ["decoy_c2_beacon"],
+      "decisive_evidence_tags": ["decoy_c2_beacon"],
+      "correct_label": "Benign — should not be escalated as C2/compromise, and should not be conflated with the real c2_ip beacon.",
+      "decisive_evidence_description": "ws05's DevTelemetryAgent.exe beacon to 52.94.236.248 — a signed process with a clean, attributable reverse-DNS destination, distinct from 185.220.101.47."
+    },
+    {
+      "id": "decoy_persistence_tool",
+      "category": "decoy",
+      "summary": "ws04 runs an unsigned HR-sync tool (HRPortalSync.exe) with a Run-key entry, superficially similar to backdoor_ws01.",
+      "encounter_tags": ["decoy_persistence_tool"],
+      "decisive_evidence_tags": ["decoy_persistence_tool"],
+      "correct_label": "Benign — should not be escalated as a backdoor despite the superficial resemblance to backdoor_ws01.",
+      "decisive_evidence_description": "HRPortalSync.exe on ws04, a documented internal tool (helpdesk ticket HD-2025-1187) deployed via GPO, with no network activity beyond HTTPS to srv02 during business hours."
+    },
+    {
+      "id": "decoy_lsass_access",
+      "category": "decoy",
+      "summary": "CorpEDR's routine credential-protection module opens lsass.exe with limited access on every workstation several times a day.",
+      "encounter_tags": ["decoy_lsass_access"],
+      "decisive_evidence_tags": ["decoy_lsass_access"],
+      "correct_label": "Benign — routine EDR monitoring; should not be escalated.",
+      "decisive_evidence_description": "CorpEDR's recurring PROCESS_QUERY_LIMITED_INFORMATION access to lsass.exe across every workstation, several times a day — distinct in process, access mask, and frequency from credential_theft and the EDR-alerting competing narratives."
+    },
+    {
+      "id": "decoy_offhours_rdp",
+      "category": "decoy",
+      "summary": "msp_vendor RDPs into srv02 off-hours on 2026-06-07 under a documented change ticket (CHG-2026-0512).",
+      "encounter_tags": ["decoy_offhours_rdp"],
+      "decisive_evidence_tags": ["decoy_offhours_rdp"],
+      "correct_label": "Benign — a documented third-party MSP maintenance session, a different night/account/destination from the real lateral movement; should not be escalated, and should not be conflated with lateral_movement_rdp.",
+      "decisive_evidence_description": "The msp_vendor RDP session into srv02 on 2026-06-07 ~23:40 and its change ticket reference (CHG-2026-0512)."
+    },
+    {
+      "id": "decoy_scheduled_task",
+      "category": "decoy",
+      "summary": "dc01 also has the genuine Microsoft Edge updater task (MicrosoftEdgeUpdateTaskMachineCore), name-similar to the malicious task.",
+      "encounter_tags": ["decoy_scheduled_task"],
+      "decisive_evidence_tags": ["decoy_scheduled_task"],
+      "correct_label": "Benign — the genuine Edge updater task; should not be escalated, and should not be conflated with persistence_scheduled_task.",
+      "decisive_evidence_description": "The MicrosoftEdgeUpdateTaskMachineCore task on dc01 (with 'Core' suffix, runs MicrosoftEdgeUpdate.exe), contrasted with the malicious task."
+    },
+    {
+      "id": "decoy_new_admin_account",
+      "category": "decoy",
+      "summary": "skim creates svc_monitoring on srv02/srv03 on 2026-06-10 under a documented change ticket (CHG-2026-0520).",
+      "encounter_tags": ["decoy_new_admin_account"],
+      "decisive_evidence_tags": ["decoy_new_admin_account"],
+      "correct_label": "Benign — a documented monitoring-rollout account on different hosts than the malicious account; should not be escalated, and should not be conflated with persistence_local_account.",
+      "decisive_evidence_description": "The svc_monitoring account created on srv02/srv03 by skim during business hours and its change ticket reference (CHG-2026-0520)."
+    },
+    {
+      "id": "decoy_bulk_backup_upload",
+      "category": "decoy",
+      "summary": "Weekly CloudBackupSync job reads all fs01 shares and uploads to a sanctioned cloud backup provider.",
+      "encounter_tags": ["decoy_bulk_backup_upload"],
+      "decisive_evidence_tags": ["decoy_bulk_backup_upload"],
+      "correct_label": "Benign — a recurring, documented weekly backup job to a sanctioned destination; should not be escalated, and should not be conflated with exfil_fs01.",
+      "decisive_evidence_description": "The weekly CloudBackupSync job (svc_backupjob) from fs01 to backup.corp-cloudvault.com, on a recurring Sunday 04:00 schedule."
+    },
+    {
+      "id": "decoy_phishing_noise",
+      "category": "decoy",
+      "summary": "Three other similarly-themed phishing emails landed on ws03/ws04/bws01 the same day; none resulted in execution.",
+      "encounter_tags": ["decoy_phishing_noise"],
+      "decisive_evidence_tags": ["decoy_phishing_noise"],
+      "correct_label": "Benign — other recipients of similarly-themed phishing emails that day, none resulting in execution; should not be escalated as separate compromises.",
+      "decisive_evidence_description": "The other 'Invoice'/'Payment overdue' phishing emails to ws03/ws04/bws01 on 2026-06-08, two quarantined and one reported, none opened/executed."
+    },
+    {
+      "id": "competing_redteam_nightingale",
+      "category": "competing_narrative",
+      "summary": "bws01 shows a full attack-chain-in-miniature (dropper, beacon, Mimikatz LSASS dump, persistence task, RDP recon pivot to srv02) with two unactioned HIGH EDR alerts.",
+      "encounter_tags": ["competing_redteam_nightingale"],
+      "decisive_evidence_tags": ["competing_redteam_nightingale_auth"],
+      "correct_label": "Authorized, time-boxed assumed-breach/red-team exercise -- not part of the real intrusion and should not be escalated as an active second compromise.",
+      "decisive_evidence_description": "The IAM provisioning record for sec_redteam (created 2026-06-01, scoped to srv02, expires 2026-06-15) and/or the SEC-2026-0085 kickoff email -- not the account name, the clean C2 reputation, the recon-only command pattern, or any other surface cue from the bws01/srv02 telemetry alone, all of which are equally consistent with a real intrusion staged to look authorized."
+    },
+    {
+      "id": "competing_ws06_edr_alert",
+      "category": "competing_narrative",
+      "summary": "ws06 shows an off-hours procdump64.exe LSASS dump that triggers an immediate EDR alert.",
+      "encounter_tags": ["competing_ws06_edr_alert"],
+      "decisive_evidence_tags": ["competing_ws06_edr_alert_disposition"],
+      "correct_label": "A sanctioned EDR-coverage validation exercise -- not part of the intrusion and should not be escalated as a second credential-theft event.",
+      "decisive_evidence_description": "The EDR alert's disposition/ticket status: triggered, auto-actioned (terminated/quarantined), reviewed by skim, and ticket SEC-2026-0091 marked Resolved -- not merely the fact that procdump is a signed admin tool, the timing, or that an alert fired and was auto-remediated."
+    },
+    {
+      "id": "competing_failed_bruteforce",
+      "category": "competing_narrative",
+      "summary": "~340 failed external RDP/VPN-gateway auth attempts from 45.155.204.0/24 the evening before the intrusion.",
+      "encounter_tags": ["competing_failed_bruteforce"],
+      "decisive_evidence_tags": ["competing_failed_bruteforce"],
+      "correct_label": "External credential-stuffing noise with zero successful authentications; unrelated to bnguyen's compromised credentials, which were obtained via the on-host LSASS dump (credential_theft) on ws01, not via this external brute-force.",
+      "decisive_evidence_description": "The absence of any successful authentication from 45.155.204.0/24, connected to the actual mechanism by which bnguyen's credentials were obtained (the ws01 LSASS dump)."
+    },
+    {
+      "id": "evidence_gap_dc01_4104",
+      "category": "evidence_gap",
+      "summary": "PowerShell Script Block Logging (EID 4104) is not enabled on dc01, so the malicious scheduled task's payload cannot be pulled via 4104.",
+      "encounter_tags": ["evidence_gap_dc01_4104"],
+      "decisive_evidence_tags": ["evidence_gap_dc01_4104"],
+      "correct_label": "A genuine, pre-existing logging-coverage gap (EID 4104 not enabled on dc01) -- not itself evidence of tampering; should be surfaced as its own finding/open question about logging coverage, while the underlying payload/command line is recovered via EID 4698 and/or Sysmon EID 1.",
+      "decisive_evidence_description": "The note that Script Block Logging / EID 4104 is not enabled on dc01, alongside the recovered task command line via EID 4698/Sysmon EID 1."
+    }
+  ]
+}

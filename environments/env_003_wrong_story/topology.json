@@ -1,6 +1,6 @@
 {
-  "name": "env_003_wrong_story",
-  "description": "Same mid-sized corporate network as env_001/env_002 (perimeter firewall, domain controller, six workstations across multiple departments, a file server, an internal app server, a backup server, and a branch office over site-to-site VPN), with a third layer of concurrent security activity — including a louder, EDR-alerting incident at the branch office — that competes for the investigator's attention.",
+  "name": "Corporate network — HQ and branch office",
+  "description": "A mid-sized corporate network: a perimeter firewall, an Active Directory domain controller, six workstations spanning Finance, IT, Sales, HR, and Engineering, a file server, an internal application server, a backup server, and a branch office connected to HQ over a site-to-site VPN.",
   "current_date": "2026-06-12",
   "segments": [
     {
@@ -96,7 +96,7 @@
       "os": "Windows 11",
       "ip": "10.10.10.39",
       "segment": "corp-lan",
-      "notes": "Primary workstation for Sarah Kim, IT/security analyst. Holds domain admin rights alongside Bob Nguyen, manages the EDR console, and periodically runs security-validation exercises."
+      "notes": "Primary workstation for Sarah Kim, IT/security analyst. Holds domain admin rights alongside Bob Nguyen and administers the corporate EDR platform."
     },
     {
       "id": "srv02",
