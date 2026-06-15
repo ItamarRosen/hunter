@@ -31,7 +31,29 @@ at all) — and scores the resulting investigation against a rubric.
      `environments/env_005_fixtures.json` and each cell's `sources.json`. No
      model ever authors evidence content, which removes a whole class of
      Matcher-side confabulation/leak failure modes.
-3. **Scoring** (`engine/scoring.py`) replays `report.json`, `transcript.json`,
+3. **Verification** (`engine/verifier.py` + `engine/report_gate.py`) checks the
+   Hunter's reasoning against the evidence it actually collected, twice:
+   - **`record_conclusion`** — when the Hunter records a working conclusion
+     mid-investigation, a fresh-context verifier model generates the strongest
+     plausible competing explanation and judges whether the evidence
+     *discriminates* between them, returning `SUPPORTED` /
+     `NON_DIAGNOSTIC` / `CONTRADICTED`, a `reachable` flag (is the
+     discriminating evidence even collectible here?), and a
+     `binding_directive` the Hunter must act on.
+   - **The terminal report gate** — at `submit_report`, every finding (not
+     just ones the Hunter explicitly recorded a conclusion on) is
+     independently re-reviewed the same way. Findings that don't hold up are
+     force-resolved to an open `coverage_gap` — never rewritten into a false
+     "clean"/"no compromise" — and claims that assert more than the evidence
+     *type* supports (e.g. inferring exfiltrated *data content* from
+     flow/volume evidence alone) are mechanically bounded via `scope_flags`,
+     with the unsupported remainder moved to `open_questions`.
+
+   `submit_report` is rejected — and the Hunter must revise — until every
+   conclusion/finding is `SUPPORTED` or has been honestly hedged as an
+   unreachable coverage gap, bounded by a gate-rejection limit so the loop
+   always terminates.
+4. **Scoring** (`engine/scoring.py`) replays `report.json`, `transcript.json`,
    and `collection_log.json` against the environment's `rubric.json`. For each
    rubric item it derives one of:
    - `not_encountered` — never surfaced.
@@ -79,6 +101,7 @@ Each `environments/<name>/` directory contains:
 | `env_003_wrong_story` | Same network, with a louder "competing" EDR alert and decoys designed to lead toward a plausible-but-wrong conclusion. Also the first environment with `coverage.json`/`rubric.json` for passive-detection comparison. |
 | `env_004_cloud_identity_lotl` | A hybrid-identity (on-prem AD + Entra ID/M365) living-off-the-land intrusion (Storm-0558/Midnight Blizzard-style OAuth abuse) that is deliberately the *quietest* signal in the environment, competing against a zero-success password spray and an authorized pentest. Includes a `_control` variant with the incident removed entirely. |
 | `env_005_favorable_*` / `env_005_hostile_*` | A 2x2 (favorable vs. hostile instrumentation x compromised vs. clean) around a single Northbridge Communications network/edge-router intrusion. Tests whether the Hunter's conclusion changes when the *same* incident is correlatable via clean off-device telemetry (favorable) vs. only via a doctored/self-reporting device plus one out-of-band tap (hostile) — and whether clean cells stay clean. Uses the deterministic `FixtureEvidenceCollector`. |
+| `env_005_hostile_compromised_notap` | Ablation of `env_005_hostile_compromised`: identical incident and topology, but the one out-of-band tap that makes the intrusion resolvable doesn't exist — the decisive evidence is unreachable by construction. Self-check for whether the Hunter (and the verifier/report gate) correctly hold the unresolved suspicion as an open coverage gap rather than producing a false all-clear or a phantom escalation. |
 
 `CHANGES.md` has the detailed, chronological design rationale for each
 environment and every fix made in response to a run's results.
@@ -109,7 +132,11 @@ python run_experiment.py [--force-regenerate-telemetry]
 Run the env_005 favorable/hostile 2x2 (fixture-based Monitor):
 
 ```bash
-python run_experiment_005.py [--seeds N]   # default N=1 (pilot)
+python run_experiment_005.py [--seeds N] [--cells GROUP] [--no-verifier]
+# --seeds N    number of seeds per cell (default 1, pilot)
+# --cells      "all" (default), "favorable", "hostile", "compromised",
+#               "clean", or "notap" (env_005_hostile_compromised_notap)
+# --no-verifier  disable the competing-hypothesis verifier/report gate
 ```
 
 Generate a telemetry chunk for the passive-detection arm:
@@ -119,8 +146,15 @@ python generate_telemetry.py <environment_name> <feed|control>
 ```
 
 All runs write their artifacts (transcript, collection log, investigation log,
-report, scoring, coverage matrix) to `runs/<environment_name>_<timestamp>/`,
-and experiment scripts write a `REPORT.md` summarizing the run.
+report, scoring, coverage matrix, and — when the verifier is enabled —
+`verifier_log.json`) to `runs/<environment_name>_<timestamp>/`, and experiment
+scripts write a `REPORT.md` summarizing the run.
+
+Run the test suite (plain `assert`-based scripts, no pytest):
+
+```bash
+.venv/bin/python tests/test_report_gate.py
+```
 
 ## Repo layout
 
@@ -128,20 +162,31 @@ and experiment scripts write a `REPORT.md` summarizing the run.
 engine/
   hunter.py          Hunter agent loop (collect_evidence / submit_report)
   evidence.py        EvidenceCollector protocol, shared types
+  verifier.py        Competing-hypothesis verifier (record_conclusion review)
+  report_gate.py     Terminal report gate: per-finding re-review + scope_flags
+                      at submit_report, with bounded forced resolution
   collectors/
     generative.py    LLM "Matcher" evidence collector
     fixtures.py      Deterministic fixture evidence collector (env_005)
   detection.py       Passive single-pass detector (no collect_evidence)
   telemetry.py       Telemetry chunk generation for the detection arm
+  rules.py           Cheap regex IoC rule-matcher (fairness-gate check)
   scoring.py         Rubric grading + confabulation graders
   coverage.py        FEED/ON-DEMAND tag bookkeeping
   environment.py     Loads topology.json + ground_truth.md
   runner.py          Shared run-artifact writing
   render.py          Investigation-log rendering
-  prompts/           All system prompts (Hunter, Matcher, detector, graders, router)
+  prompts/           All system prompts (Hunter, Matcher, detector, verifier,
+                      graders, router)
 environments/        One directory per environment (topology, ground truth, rubric, ...)
 runs/                Timestamped output of every hunt/experiment/scoring run
+tests/               Plain-assert test scripts (no pytest); run via
+                      `.venv/bin/python tests/test_*.py`
 run_hunt.py, run_experiment*.py, score_hunt.py, generate_telemetry.py
   Composition roots / CLI entry points
 CHANGES.md           Chronological log of environment design fixes and why
 ```
+
+## License
+
+MIT — see [LICENSE](LICENSE).
