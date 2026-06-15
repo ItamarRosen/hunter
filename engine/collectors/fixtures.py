@@ -5,10 +5,12 @@ evidence set (env_005 monitor fixtures + contract). An LLM router does
 classification only -- which source_id(s) a request's concepts touch -- and
 this collector returns the matched source's record bodies verbatim from the
 fixture library, plus its coverage string as the note. No model ever
-authors evidence content; a request that routes to nothing, or to a source
-that doesn't exist in this cell, returns the canned "not found" response.
+authors evidence content; a request that routes to nothing, to a source
+that doesn't exist in this cell, or to a source whose scope doesn't cover
+the requested device, returns the canned "not found" response.
 """
 
+import re
 from pathlib import Path
 from string import Template
 
@@ -42,17 +44,30 @@ class FixtureEvidenceCollector:
 
         records = self._fixtures["records"]
         record_tags = self._fixtures["record_tags"]
+        source_scopes = self._fixtures["source_scopes"]
+        device = device_id.strip().lower()
 
         data_parts: list[str] = []
         note_parts: list[str] = []
         empty_notes: list[str] = []
         refs: set[str] = set()
         core_flag = False
+        in_scope_sources: list[dict] = []
 
         for source_id in source_ids:
             source = self._cell_sources.get(source_id)
             if source is None:
                 continue
+
+            scope = source_scopes.get(source_id, "*")
+            if scope != "*" and device not in scope:
+                empty_notes.append(
+                    f"{source['coverage']} — does not cover {device_id} "
+                    f"(covers: {', '.join(scope)})"
+                )
+                continue
+
+            in_scope_sources.append(source)
             if source["exists"]:
                 for record_id in source["returns"]:
                     data_parts.append(records[record_id])
@@ -63,14 +78,21 @@ class FixtureEvidenceCollector:
             else:
                 empty_notes.append(source["coverage"])
 
+        indicator_notes = _named_indicator_notes(
+            request, data_parts, in_scope_sources, self._fixtures["tracked_indicators"]
+        )
+
         if data_parts:
             found = True
             data = "\n\n".join(data_parts)
-            note = "; ".join(note_parts)
+            note = "; ".join(note_parts + indicator_notes)
         else:
             found = False
             data = ""
-            note = "; ".join(empty_notes) if empty_notes else self._fixtures["default_note"]
+            if empty_notes or indicator_notes:
+                note = "; ".join(empty_notes + indicator_notes)
+            else:
+                note = self._fixtures["default_note"]
 
         self.log.append(
             CollectionLogEntry(
@@ -106,6 +128,27 @@ def _resolve_egress_visibility(source_ids: list[str], cell_sources: dict) -> lis
         return source_ids
     resolved = "edge_wan_netflow" if cell_sources["edge_wan_netflow"]["exists"] else "oob_tap"
     return list(dict.fromkeys(resolved if s == "egress_visibility" else s for s in source_ids))
+
+
+def _named_indicator_notes(
+    request: str,
+    data_parts: list[str],
+    in_scope_sources: list[dict],
+    tracked_indicators: list[str],
+) -> list[str]:
+    """For any tracked indicator the request names but the collected data
+    doesn't contain, note its absence per in-scope, existing source -- a
+    query-time targeted lookup, never a volunteered denial."""
+    data_text = "\n\n".join(data_parts)
+    notes: list[str] = []
+    for indicator in tracked_indicators:
+        pattern = re.compile(r"\b" + re.escape(indicator) + r"\b", re.IGNORECASE)
+        if not pattern.search(request) or pattern.search(data_text):
+            continue
+        for source in in_scope_sources:
+            if source["exists"]:
+                notes.append(f"no records involving {indicator} in {source['coverage']}")
+    return notes
 
 
 def _render_router_prompt(routing: dict) -> str:

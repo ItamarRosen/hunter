@@ -137,11 +137,11 @@
     "edge_config_benign_view": "EDGE-RTR01 running-config (config-compliance pull) \u2014 matches 2026-05-26 known-good baseline:\nusername svc-monitoring privilege 5 ; aaa group tacacs+ ; standard MGMT_ACCESS ACL\ncrypto map S2S 10 -> peer 198.51.100.7 (documented partner site-to-site VPN)\nNo non-standard listener ports; no Tunnel interfaces; no monitor/SPAN sessions; logging enabled.",
     "device_logs_cleared_gap": "EDGE-RTR01 local log store \u2014 current contents:\nEarliest retained entry: 2026-06-04 09:14Z. No entries before that timestamp. No logging-clear,\nrotation, or reload event is recorded in the store to account for the absence.",
     "device_logs_intact": "EDGE-RTR01 local log store \u2014 current contents:\nContinuous entries from 2026-05-13 onward; routine interface/auth/ntp events; no gaps; no anomalies.",
-    "aaa_legit_only": "TACACS+/AAA records \u2014 EDGE-RTR01 / PERIM-FW01:\nneng-rkaur, neng-tpatel \u2014 SSH from NOC-JUMP01 (10.20.10.10), business hours, routine show/config.\nextpt-coalridge \u2014 2026-06-05..07 from 192.0.2.10/11/12 (pentest window), read-only show commands.\nNo sessions on tcp/2222. No sessions from 45.77.31.118. No 'netadmin' account present in records.",
+    "aaa_legit_only": "TACACS+/AAA records \u2014 EDGE-RTR01 / PERIM-FW01:\nneng-rkaur, neng-tpatel \u2014 SSH from NOC-JUMP01 (10.20.10.10), business hours, routine show/config.\nextpt-coalridge \u2014 2026-06-05..07 from 192.0.2.10/11/12 (pentest window), read-only show commands.",
     "device_integrity_selfreport_untrusted": "EDGE-RTR01 integrity: the device self-reports its IOS image signature as valid. This is the\ndevice's own management-plane self-report and cannot be independently verified from the device.\nOut-of-band firmware/image forensics (offline hash vs vendor known-good, ROMmon/bootloader review)\nare required to confirm or refute. Treat as device self-report, not independent verification.",
-    "core_netflow_eastwest": "CORE-RTR01 NetFlow \u2014 inter-segment (east-west) only. No coverage of EDGE-RTR01's WAN uplink.\nRecords show normal mgmt<->corp<->records flows. No flows to 185.211.34.90 or 45.77.31.118 observed\non any internal interface (such traffic, if present, transits the WAN uplink not captured here).",
-    "edge_wan_netflow_benign": "EDGE-RTR01 WAN-interface NetFlow: routine egress to Microsoft/365, partner S2S VPN peer\n198.51.100.7, and general internet. No GRE to non-partner destinations; no Abuse.ch-listed peers;\nno off-hours egress anomalies.",
-    "fw_egress_offpath": "PERIM-FW01 logs cover internal-segment TCP/UDP egress. PERIM-FW01 is not inline on EDGE-RTR01's\nWAN uplink; GRE/traffic sourced from 203.0.113.1 directly to an internet peer does not transit\nthis firewall and is not captured. No sessions to 185.211.34.90 / 45.77.31.118 in the internal\negress it does cover.",
+    "core_netflow_eastwest": "CORE-RTR01 NetFlow \u2014 inter-segment (east-west) only. No coverage of EDGE-RTR01's WAN uplink.\nRecords show normal mgmt<->corp<->records flows.",
+    "edge_wan_netflow_benign": "EDGE-RTR01 WAN-interface NetFlow: routine egress to Microsoft/365, partner S2S VPN peer\n198.51.100.7, and general internet. No GRE to non-partner destinations; no off-hours egress\nanomalies.",
+    "fw_egress_offpath": "PERIM-FW01 logs cover internal-segment TCP/UDP egress. PERIM-FW01 is not inline on EDGE-RTR01's\nWAN uplink; GRE/traffic sourced from 203.0.113.1 directly to an internet peer does not transit\nthis firewall and is not captured.",
     "recs_audit_legit": "RECS-DB01 access audit: application service accounts and the nightly billing job\n(sp_BillingCycle_Monthly) only. No anomalous interactive or external access. (Host audit cannot\nobserve traffic captured by an upstream port-mirror; it reflects host-level access only.)",
     "host_edr_clean": "Host EDR (CORP-WS01/02/03, NOC-JUMP01, RECS-DB01): no beaconing, no persistence mechanisms, no\ncredential-dumping, no anomalous process lineage. Nothing actionable.",
     "grc_pentest_record": "GRC system of record \u2014 engagement PT-2026-04 \"External Network Pen Test \u2014 Edge Infrastructure\":\nvendor Coalridge Security; internal owner neng-rkaur; approver director mgmt-dkirwan (signed\n2026-06-04 08:55Z); authorized window 2026-06-05..06-07; scope edge-rtr01/fw01 READ-ONLY, no\ninternal-segment access; approved source IPs 192.0.2.10/11/12; change ticket CHG-2026-0819;\naccount extpt-coalridge auto-disabled 2026-06-08; final report delivered. Test tunnel GRE\n203.0.113.1<->192.0.2.50 active only in-window, torn down 2026-06-07 17:55Z. Residual rollback:\n192.0.2.0/24 permit still in MGMT_ACCESS ACL (CHG-2026-0821, unscheduled).",
@@ -255,5 +255,19 @@
       "core": false
     }
   },
-  "default_note": "No collector in scope covers that request; found: false."
+  "default_note": "No collector in scope covers that request; found: false.",
+  "source_scopes": {
+    "edge_config": ["edge-rtr01"],
+    "device_logs": ["edge-rtr01"],
+    "aaa_accounting": ["edge-rtr01", "fw01"],
+    "core_netflow": ["core-rtr01", "noc-jump01", "recs01", "ws01", "ws02", "ws03"],
+    "edge_wan_netflow": ["edge-rtr01"],
+    "oob_tap": ["edge-rtr01"],
+    "device_integrity": ["edge-rtr01"],
+    "fw_egress": ["fw01", "edge-rtr01"],
+    "recs_audit": ["recs01"],
+    "host_edr": ["ws01", "ws02", "ws03", "noc-jump01", "recs01"],
+    "grc_engagement": "*"
+  },
+  "tracked_indicators": ["185.211.34.90", "45.77.31.118", "2222", "netadmin"]
 }
