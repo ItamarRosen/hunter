@@ -32,3 +32,7 @@ def write_run_artifacts(
 
 def write_report(run_dir: Path, report: dict[str, Any] | None) -> None:
     (run_dir / "report.json").write_text(json.dumps(report, indent=2))
+
+
+def write_verifier_log(run_dir: Path, verifier_log: list[dict]) -> None:
+    (run_dir / "verifier_log.json").write_text(json.dumps(verifier_log, indent=2))

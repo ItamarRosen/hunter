@@ -1,0 +1,79 @@
+{
+  "decisive_source_ids": [
+    "oob_tap"
+  ],
+  "sources": {
+    "edge_config": {
+      "exists": true,
+      "coverage": "running-config via config-compliance pull",
+      "returns": [
+        "edge_config_benign_view"
+      ]
+    },
+    "device_logs": {
+      "exists": true,
+      "coverage": "edge-rtr01 local log store current contents",
+      "returns": [
+        "device_logs_cleared_gap"
+      ]
+    },
+    "aaa_accounting": {
+      "exists": true,
+      "coverage": "centralized TACACS+/AAA accounting",
+      "returns": [
+        "aaa_legit_only"
+      ]
+    },
+    "core_netflow": {
+      "exists": true,
+      "coverage": "inter-segment east-west only; no edge WAN uplink",
+      "returns": [
+        "core_netflow_eastwest"
+      ]
+    },
+    "edge_wan_netflow": {
+      "exists": false,
+      "coverage": "no NetFlow collector on EDGE-RTR01's WAN uplink"
+    },
+    "fw_egress": {
+      "exists": true,
+      "coverage": "perimeter firewall; off-path for the edge WAN uplink",
+      "returns": [
+        "fw_egress_offpath"
+      ]
+    },
+    "oob_tap": {
+      "exists": false,
+      "coverage": "no out-of-band capture exists at the internet handoff -- EDGE-RTR01's WAN uplink has no independent vantage point",
+      "returns": []
+    },
+    "device_integrity": {
+      "exists": true,
+      "coverage": "device integrity self-report",
+      "returns": [
+        "device_integrity_selfreport_untrusted"
+      ]
+    },
+    "recs_audit": {
+      "exists": true,
+      "coverage": "RECS-DB01 host access audit",
+      "returns": [
+        "recs_audit_legit"
+      ]
+    },
+    "grc_engagement": {
+      "exists": true,
+      "coverage": "GRC system of record",
+      "returns": [
+        "grc_pentest_record"
+      ]
+    },
+    "host_edr": {
+      "exists": true,
+      "coverage": "host EDR",
+      "returns": [
+        "host_edr_clean"
+      ]
+    }
+  }
+}

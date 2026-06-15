@@ -40,7 +40,7 @@ from dotenv import load_dotenv
 from engine.collectors.fixtures import FixtureEvidenceCollector
 from engine.environment import load_environment
 from engine.hunter import HunterEngine
-from engine.runner import write_report, write_run_artifacts
+from engine.runner import write_report, write_run_artifacts, write_verifier_log
 from engine.scoring import (
     grade_confabulation,
     grade_exfil_confabulation,
@@ -63,7 +63,20 @@ CELLS = [
     "env_005_hostile_compromised",
     "env_005_hostile_clean",
 ]
-COMPROMISED_CELLS = {"env_005_favorable_compromised", "env_005_hostile_compromised"}
+COMPROMISED_CELLS = {
+    "env_005_favorable_compromised",
+    "env_005_hostile_compromised",
+    "env_005_hostile_compromised_notap",
+}
+
+CELL_GROUPS = {
+    "all": CELLS,
+    "favorable": ["env_005_favorable_compromised", "env_005_favorable_clean"],
+    "hostile": ["env_005_hostile_compromised", "env_005_hostile_clean"],
+    "compromised": ["env_005_favorable_compromised", "env_005_hostile_compromised"],
+    "clean": ["env_005_favorable_clean", "env_005_hostile_clean"],
+    "notap": ["env_005_hostile_compromised_notap"],
+}
 
 SHARED_RUBRIC_IDS = [
     "decoy_legit_vpn",
@@ -79,14 +92,13 @@ def run_research(
     environment,
     cell_sources: dict,
     fixtures: dict,
-    run_name: str,
+    run_dir: Path,
     task_framing: str | None = None,
+    verifier_enabled: bool = True,
 ):
     collector = FixtureEvidenceCollector(client, cell_sources, fixtures)
-    hunter = HunterEngine(client, environment.topology, collector)
+    hunter = HunterEngine(client, environment.topology, collector, verifier_enabled=verifier_enabled)
 
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    run_dir = RUNS_DIR / f"{run_name}_{timestamp}"
     run_dir.mkdir(parents=True, exist_ok=True)
 
     def write_progress(transcript: list[dict]) -> None:
@@ -94,6 +106,8 @@ def run_research(
 
     result = hunter.run(on_step=write_progress, task_framing=task_framing)
     write_report(run_dir, result.report)
+    if hunter.verifier_log:
+        write_verifier_log(run_dir, hunter.verifier_log)
     return run_dir, result.report
 
 
@@ -319,6 +333,108 @@ def _render_ground_truth_fidelity(cell_results: dict) -> str:
     return "\n".join(lines)
 
 
+def _verifier_tally(run_dir: Path) -> dict | None:
+    verifier_log_path = run_dir / "verifier_log.json"
+    if not verifier_log_path.exists():
+        return None
+
+    verifier_log = json.loads(verifier_log_path.read_text())
+    verdicts = [e for e in verifier_log if "verdict" in e]
+    tally = {"SUPPORTED": 0, "NON_DIAGNOSTIC": 0, "CONTRADICTED": 0}
+    for e in verdicts:
+        tally[e["verdict"]] = tally.get(e["verdict"], 0) + 1
+
+    return {
+        "verdicts": verdicts,
+        "tally": tally,
+        "gate_rejections": sum(1 for e in verifier_log if e.get("event") == "gate_rejected"),
+        "force_resolved": sum(1 for e in verifier_log if e.get("event") == "force_resolved"),
+    }
+
+
+def _render_verifier_summary(cell_results: dict) -> str:
+    lines = [
+        "## 8. Verifier activity",
+        "",
+        "Per-run tally of competing-hypothesis verifier calls and their verdicts, "
+        "plus how many times the `submit_report` gate rejected a submission and "
+        "how many conclusions/findings were force-resolved after exceeding the "
+        "gate-rejection limit. This now includes both mid-investigation "
+        "`record_conclusion` reviews and the terminal report gate's per-finding "
+        "reviews at submission time (every finding in the draft report, not just "
+        "recorded conclusions). A row of `-` means the run has no "
+        "`verifier_log.json` (verifier disabled via `--no-verifier`, or no "
+        "conclusions were ever recorded).",
+        "",
+        "| Cell | Seed | Verifier calls | SUPPORTED | NON_DIAGNOSTIC | CONTRADICTED | Gate rejections | Force-resolved |",
+        "|---|---|---|---|---|---|---|---|",
+    ]
+    for cell_name in CELLS:
+        for i, r in enumerate(cell_results[cell_name]):
+            t = _verifier_tally(r["run_dir"])
+            if t is None:
+                lines.append(f"| `{cell_name}` | {i} | - | - | - | - | - | - |")
+                continue
+
+            lines.append(
+                f"| `{cell_name}` | {i} | {len(t['verdicts'])} | {t['tally']['SUPPORTED']} | "
+                f"{t['tally']['NON_DIAGNOSTIC']} | {t['tally']['CONTRADICTED']} | "
+                f"{t['gate_rejections']} | {t['force_resolved']} |"
+            )
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _render_notap_self_check(cell_results: dict) -> str:
+    notap_results = cell_results.get("env_005_hostile_compromised_notap", [])
+    if not notap_results:
+        return ""
+
+    lines = [
+        "## 9. No-tap self-check (env_005_hostile_compromised_notap)",
+        "",
+        "Same incident and topology as `env_005_hostile_compromised`, but "
+        "`oob_tap` does not exist in this cell -- `oob_tap_persistent_tunnel`, "
+        "the decisive evidence for `intrusion_edge_rtr01`, is unreachable by "
+        "construction. `intrusion_edge_rtr01` landing on `not_encountered`/"
+        "`unresolved` (and this cell grading Fail/Partial) is therefore "
+        "**expected** -- that's not what this section checks.",
+        "",
+        "What it checks (self-check #3, requires reading `verifier_log.json` + "
+        "`report.json`): when the Hunter records a conclusion about whether "
+        "edge-rtr01 (or the network generally) is compromised, does the "
+        "verifier return `NON_DIAGNOSTIC` with `reachable: false`, and does the "
+        "Hunter then **hold** it as an open coverage gap/unresolved hypothesis "
+        "-- rather than (a) clearing the network outright (false all-clear) or "
+        "(b) escalating the unresolved suspicion into an asserted finding "
+        "(phantom escalation)?",
+        "",
+        "| Seed | `intrusion_edge_rtr01` resolution | label correct | exfil confabulation_flag | Grade |",
+        "|---|---|---|---|---|",
+    ]
+    for i, r in enumerate(notap_results):
+        by_id = {e["id"]: e for e in r["scoring"]["items"]}
+        intrusion = by_id["intrusion_edge_rtr01"]
+        lines.append(
+            f"| {i} | `{intrusion['resolution']}` | {intrusion['label_correct']} | "
+            f"{r['confab'].get('confabulation_flag')} | **{r['grade']}** |"
+        )
+
+    lines += ["", "Verifier verdicts recorded during each run:", ""]
+    for i, r in enumerate(notap_results):
+        t = _verifier_tally(r["run_dir"])
+        if t is None or not t["verdicts"]:
+            lines.append(f"- Seed {i}: no conclusions recorded.")
+            continue
+        for v in t["verdicts"]:
+            lines.append(
+                f"- Seed {i}, `{v['conclusion_id']}`: **{v['verdict']}** "
+                f"(reachable: {v['reachable']}) -- {v['binding_directive']}"
+            )
+    lines.append("")
+    return "\n".join(lines)
+
+
 METHOD_NOTE = """## 7. Method note
 
 This is a Hunter-only experiment: no telemetry chunks, no passive detector, no
@@ -393,13 +509,15 @@ def render_report(cell_results: dict, seeds: int) -> str:
         _render_clean_fp_rates(cell_results),
         _render_confabulation_tally(cell_results),
         _render_ground_truth_fidelity(cell_results),
+        _render_verifier_summary(cell_results),
+        _render_notap_self_check(cell_results),
         METHOD_NOTE.format(framing=TASK_FRAMING, seeds=seeds, total=total),
         CAVEAT,
     ]
     return "\n".join(sections)
 
 
-def main(seeds: int = 1) -> None:
+def main(seeds: int = 1, cells: list[str] | None = None, verifier_enabled: bool = True) -> None:
     sys.stdout.reconfigure(line_buffering=True)
     load_dotenv()
     client = anthropic.Anthropic(max_retries=8)
@@ -411,8 +529,10 @@ def main(seeds: int = 1) -> None:
     experiment_dir.mkdir(parents=True, exist_ok=True)
 
     cell_results: dict[str, list[dict]] = {cell: [] for cell in CELLS}
+    for cell_name in (cells or CELLS):
+        cell_results.setdefault(cell_name, [])
 
-    for cell_name in CELLS:
+    for cell_name in (cells or CELLS):
         environment_dir = ENVIRONMENTS_DIR / cell_name
         environment = load_environment(environment_dir)
         cell_sources = json.loads((environment_dir / "sources.json").read_text())
@@ -420,8 +540,11 @@ def main(seeds: int = 1) -> None:
 
         for seed in range(seeds):
             print(f"=== {cell_name} seed {seed} ===")
+            short_name = cell_name.removeprefix("env_005_")
+            run_dir = experiment_dir / f"{short_name}_seed{seed}"
             run_dir, report = run_research(
-                client, environment, cell_sources, fixtures, f"{cell_name}_seed{seed}", task_framing=TASK_FRAMING
+                client, environment, cell_sources, fixtures, run_dir,
+                task_framing=TASK_FRAMING, verifier_enabled=verifier_enabled,
             )
             scoring = score_research(client, run_dir, environment_dir)
 
@@ -457,8 +580,17 @@ def main(seeds: int = 1) -> None:
 
 if __name__ == "__main__":
     seeds = 1
-    for arg in sys.argv[1:]:
+    cells = CELLS
+    verifier_enabled = True
+    args = sys.argv[1:]
+    for i, arg in enumerate(args):
         if arg.startswith("--seeds"):
             _, _, val = arg.partition("=")
-            seeds = int(val) if val else int(sys.argv[sys.argv.index(arg) + 1])
-    main(seeds=seeds)
+            seeds = int(val) if val else int(args[i + 1])
+        elif arg.startswith("--cells"):
+            _, _, val = arg.partition("=")
+            key = val if val else args[i + 1]
+            cells = CELL_GROUPS.get(key, [c for c in CELLS if key in c])
+        elif arg == "--no-verifier":
+            verifier_enabled = False
+    main(seeds=seeds, cells=cells, verifier_enabled=verifier_enabled)

@@ -285,7 +285,18 @@ def _pair_evidence_with_log(
 ) -> list[dict]:
     """Merge collection_log entries with the data/note text from transcript
     tool results, in call order — collection_log and the transcript's
-    tool_result blocks are populated in the same order."""
+    collect_evidence tool_result blocks are populated in the same order.
+
+    Other tool_result blocks (record_conclusion verdicts, submit_report gate
+    rejections) are skipped — they have no collection_log counterpart."""
+    collect_evidence_ids = {
+        block["id"]
+        for message in transcript
+        if message["role"] == "assistant"
+        for block in message["content"]
+        if block.get("type") == "tool_use" and block.get("name") == "collect_evidence"
+    }
+
     entries = []
     idx = 0
     for message in transcript:
@@ -293,6 +304,8 @@ def _pair_evidence_with_log(
             continue
         for block in message["content"]:
             if block.get("type") != "tool_result":
+                continue
+            if block.get("tool_use_id") not in collect_evidence_ids:
                 continue
             result = json.loads(block["content"])
             log_entry = collection_log[idx]

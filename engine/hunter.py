@@ -13,11 +13,13 @@ from typing import Any, Callable
 
 import anthropic
 
+from engine import report_gate, verifier
 from engine.evidence import COLLECT_EVIDENCE_TOOL, EvidenceCollector
 
 HUNTER_PROMPT_PATH = Path(__file__).parent / "prompts" / "hunter_system.md"
 DEFAULT_MODEL = "claude-opus-4-8"
 DEFAULT_MAX_COLLECTIONS = 15
+MAX_GATE_REJECTIONS = 2
 
 SUBMIT_REPORT_TOOL = {
     "name": "submit_report",
@@ -63,6 +65,37 @@ SUBMIT_REPORT_TOOL = {
     },
 }
 
+RECORD_CONCLUSION_TOOL = {
+    "name": "record_conclusion",
+    "description": (
+        "Record a working conclusion the moment you crystallize it -- a "
+        "finding you're ready to assert, or a hypothesis/asset you're ready "
+        "to dismiss or clear -- so it can be checked against competing "
+        "explanations before it goes in your final report. To revise or "
+        "downgrade an existing conclusion (e.g. after new evidence, or in "
+        "response to a verdict), call this again with the SAME "
+        "conclusion_id and updated statement/reasoning."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "conclusion_id": {
+                "type": "string",
+                "description": "Short stable slug, e.g. 'edge_rtr01_compromise' or 'noc_mon01_span_benign'.",
+            },
+            "statement": {
+                "type": "string",
+                "description": "The conclusion itself, stated plainly.",
+            },
+            "reasoning": {
+                "type": "string",
+                "description": "Why you believe this, citing what you've collected.",
+            },
+        },
+        "required": ["conclusion_id", "statement", "reasoning"],
+    },
+}
+
 
 @dataclass
 class HuntResult:
@@ -78,6 +111,8 @@ class HunterEngine:
         collector: EvidenceCollector,
         model: str = DEFAULT_MODEL,
         max_collections: int = DEFAULT_MAX_COLLECTIONS,
+        verifier_enabled: bool = True,
+        verifier_model: str | None = None,
     ) -> None:
         self._client = client
         self._topology = topology
@@ -85,6 +120,8 @@ class HunterEngine:
         self._model = model
         self._max_collections = max_collections
         self._system_prompt = HUNTER_PROMPT_PATH.read_text()
+        self._verifier_enabled = verifier_enabled
+        self._verifier_model = verifier_model or model
 
     def run(
         self,
@@ -106,6 +143,9 @@ class HunterEngine:
 
         collections_used = 0
         max_rounds = self._max_collections * 2
+        self._conclusions: dict[str, dict] = {}
+        self.verifier_log: list[dict] = []
+        self._gate_attempts = 0
 
         print(f"=== Hunt started — budget: {self._max_collections} collect_evidence calls ===\n")
 
@@ -114,6 +154,9 @@ class HunterEngine:
             if budget_exhausted:
                 tools = [SUBMIT_REPORT_TOOL]
                 tool_choice = {"type": "tool", "name": "submit_report"}
+            elif self._verifier_enabled:
+                tools = [COLLECT_EVIDENCE_TOOL, SUBMIT_REPORT_TOOL, RECORD_CONCLUSION_TOOL]
+                tool_choice = {"type": "auto"}
             else:
                 tools = [COLLECT_EVIDENCE_TOOL, SUBMIT_REPORT_TOOL]
                 tool_choice = {"type": "auto"}
@@ -136,13 +179,6 @@ class HunterEngine:
 
             tool_uses = [b for b in response.content if b.type == "tool_use"]
 
-            report_block = next((b for b in tool_uses if b.name == "submit_report"), None)
-            if report_block is not None:
-                _print_report(report_block.input)
-                if on_step:
-                    on_step(messages)
-                return HuntResult(report=report_block.input, transcript=messages)
-
             if not tool_uses:
                 messages.append({
                     "role": "user",
@@ -152,32 +188,175 @@ class HunterEngine:
                     on_step(messages)
                 continue
 
+            report_block = next((b for b in tool_uses if b.name == "submit_report"), None)
+            other_blocks = [b for b in tool_uses if b.name != "submit_report"]
+
             tool_results = []
-            for block in tool_uses:
-                collections_used += 1
-                device_id = block.input["device_id"]
-                request = block.input["request"]
-                print(f"[{collections_used}/{self._max_collections}] collect_evidence({device_id}): {request}")
+            for block in other_blocks:
+                if block.name == "collect_evidence":
+                    collections_used += 1
+                    device_id = block.input["device_id"]
+                    request = block.input["request"]
+                    print(f"[{collections_used}/{self._max_collections}] collect_evidence({device_id}): {request}")
 
-                evidence = self._collector.collect(device_id=device_id, request=request)
+                    evidence = self._collector.collect(device_id=device_id, request=request)
 
-                status = "found" if evidence.found else "not found"
-                note = f" — {evidence.note}" if evidence.note else ""
-                preview = " ".join(evidence.data.split())
-                if len(preview) > 200:
-                    preview = preview[:200] + "..."
-                print(f"    -> {status}{note}")
-                print(f"    {preview}\n")
+                    status = "found" if evidence.found else "not found"
+                    note = f" — {evidence.note}" if evidence.note else ""
+                    preview = " ".join(evidence.data.split())
+                    if len(preview) > 200:
+                        preview = preview[:200] + "..."
+                    print(f"    -> {status}{note}")
+                    print(f"    {preview}\n")
 
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": block.id,
-                    "content": json.dumps({
-                        "found": evidence.found,
-                        "data": evidence.data,
-                        "note": evidence.note,
-                    }),
-                })
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": json.dumps({
+                            "found": evidence.found,
+                            "data": evidence.data,
+                            "note": evidence.note,
+                        }),
+                    })
+                elif block.name == "record_conclusion":
+                    conclusion_id = block.input["conclusion_id"]
+                    statement = block.input["statement"]
+                    reasoning = block.input["reasoning"]
+                    print(f"[verifier] record_conclusion({conclusion_id}): {statement}")
+
+                    evidence_record = verifier.build_evidence_record(messages)
+                    verdict = verifier.run_verifier(
+                        self._client, self._verifier_model, statement, reasoning, evidence_record,
+                    )
+                    print(f"    -> {verdict['verdict']} — {verdict.get('binding_directive', '')}\n")
+
+                    self.verifier_log.append({
+                        "conclusion_id": conclusion_id,
+                        "round": round_num,
+                        "collections_used_at_this_point": collections_used,
+                        "statement": statement,
+                        "reasoning": reasoning,
+                        "alternatives_considered": verdict.get("alternatives_considered", []),
+                        "key_evidence": verdict.get("key_evidence", []),
+                        "verdict": verdict["verdict"],
+                        "discriminating_evidence_to_seek": verdict.get("discriminating_evidence_to_seek", ""),
+                        "reachable": verdict["reachable"],
+                        "binding_directive": verdict.get("binding_directive", ""),
+                    })
+
+                    self._conclusions[conclusion_id] = {
+                        "statement": statement,
+                        "reasoning": reasoning,
+                        "verdict": verdict["verdict"],
+                        "reachable": verdict["reachable"],
+                        "binding_directive": verdict.get("binding_directive", ""),
+                        "status": "resolved" if verdict["verdict"] == "SUPPORTED" else "open",
+                        "gate_rejections": 0,
+                        "force_resolved": False,
+                    }
+
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": json.dumps(verdict),
+                    })
+
+            if report_block is not None:
+                unresolved_items = [
+                    (cid, c) for cid, c in self._conclusions.items() if c["status"] == "open"
+                ]
+                if self._verifier_enabled and not budget_exhausted and unresolved_items:
+                    unresolved_payload = []
+                    for cid, c in unresolved_items:
+                        c["gate_rejections"] += 1
+                        if c["gate_rejections"] > MAX_GATE_REJECTIONS:
+                            c["status"] = "resolved"
+                            c["force_resolved"] = True
+                            self.verifier_log.append({
+                                "event": "force_resolved",
+                                "conclusion_id": cid,
+                                "round": round_num,
+                            })
+                        else:
+                            unresolved_payload.append({
+                                "conclusion_id": cid,
+                                "statement": c["statement"],
+                                "verdict": c["verdict"],
+                                "binding_directive": c["binding_directive"],
+                                "reachable": c["reachable"],
+                            })
+
+                    if unresolved_payload:
+                        self.verifier_log.append({
+                            "event": "gate_rejected",
+                            "round": round_num,
+                            "unresolved_conclusion_ids": [p["conclusion_id"] for p in unresolved_payload],
+                        })
+                        tool_results.append({
+                            "type": "tool_result",
+                            "tool_use_id": report_block.id,
+                            "content": json.dumps({
+                                "accepted": False,
+                                "reason": (
+                                    "One or more working conclusions have not yet "
+                                    "been resolved by the verifier. Address each "
+                                    "one per its binding_directive, then call "
+                                    "record_conclusion again on the same "
+                                    "conclusion_id before resubmitting."
+                                ),
+                                "unresolved_conclusions": unresolved_payload,
+                            }),
+                        })
+                        messages.append({"role": "user", "content": tool_results})
+                        if on_step:
+                            on_step(messages)
+                        continue
+
+                final_report = report_block.input
+
+                if self._verifier_enabled:
+                    evidence_record = verifier.build_evidence_record(messages)
+                    accepted, final_report, gate_log_entries, unresolved_payload = report_gate.review_report(
+                        self._client, self._verifier_model, final_report,
+                        evidence_record, self._gate_attempts, budget_exhausted,
+                    )
+                    for entry in gate_log_entries:
+                        entry.setdefault("round", round_num)
+                        entry.setdefault("collections_used_at_this_point", collections_used)
+                        self.verifier_log.append(entry)
+
+                    if not accepted:
+                        self._gate_attempts += 1
+                        tool_results.append({
+                            "type": "tool_result",
+                            "tool_use_id": report_block.id,
+                            "content": json.dumps({
+                                "accepted": False,
+                                "reason": (
+                                    "One or more findings in your draft report "
+                                    "have not been confirmed by the verifier. "
+                                    "Address each one per its binding_directive "
+                                    "-- collect the named discriminating evidence "
+                                    "and revise the finding, or downgrade it -- "
+                                    "then resubmit."
+                                ),
+                                "unresolved_conclusions": unresolved_payload,
+                            }),
+                        })
+                        messages.append({"role": "user", "content": tool_results})
+                        if on_step:
+                            on_step(messages)
+                        continue
+
+                if tool_results:
+                    messages.append({"role": "user", "content": tool_results})
+                    if on_step:
+                        on_step(messages)
+                _print_report(final_report)
+                if on_step:
+                    on_step(messages)
+                return HuntResult(report=final_report, transcript=messages)
+
             messages.append({"role": "user", "content": tool_results})
             if on_step:
                 on_step(messages)
