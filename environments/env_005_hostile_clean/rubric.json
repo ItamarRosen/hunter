@@ -1,0 +1,49 @@
+{
+  "items": [
+    {
+      "id": "decoy_legit_vpn",
+      "category": "decoy",
+      "summary": "Long-standing, documented site-to-site VPN tunnel from edge-rtr01 to a partner network (Meridian Exchange Carrier, 198.51.100.20).",
+      "encounter_tags": ["decoy_legit_vpn"],
+      "decisive_evidence_tags": ["decoy_legit_vpn"],
+      "correct_label": "Benign — a long-standing, documented site-to-site VPN tunnel to a partner network (Meridian Exchange Carrier, 198.51.100.20); not part of any intrusion.",
+      "decisive_evidence_description": "The tunnel's presence in edge-rtr01's config diff as unchanged/expected, its age (predates the incident window by over a year), and the OOB tap's confirmation that it is the only persistent external tunnel observed. Being a GRE/VPN tunnel to an external IP is NOT by itself grounds for suspicion."
+    },
+    {
+      "id": "decoy_legit_span",
+      "category": "decoy",
+      "summary": "Documented monitoring SPAN session from core-rtr01 to NOC-MON01, change ticket CHG-2026-0731, requested by svc-noc-mon.",
+      "encounter_tags": ["decoy_legit_span"],
+      "decisive_evidence_tags": ["decoy_legit_span"],
+      "correct_label": "Benign — a documented monitoring SPAN session from core-rtr01 to NOC-MON01 (change ticket CHG-2026-0731, requested by svc-noc-mon); not part of any intrusion.",
+      "decisive_evidence_description": "The change ticket CHG-2026-0731 in the GRC system of record, the requesting service account svc-noc-mon, and the SPAN session's long-running, unremarkable history. A SPAN/mirror session existing on a core device is not, by itself, suspicious — it is ordinary infrastructure here."
+    },
+    {
+      "id": "decoy_undocumented_changes",
+      "category": "decoy",
+      "summary": "An undocumented but genuine config change to fw01 by neng-tpatel on 2026-06-03 (NAT/ACL adjustment for a vendor integration), made with no change ticket.",
+      "encounter_tags": ["decoy_undocumented_changes"],
+      "decisive_evidence_tags": ["decoy_undocumented_changes"],
+      "correct_label": "Benign — a genuine, authorized configuration change to fw01 by administrator neng-tpatel on 2026-06-03 that was simply never ticketed; not part of any intrusion.",
+      "decisive_evidence_description": "AAA records the session as neng-tpatel from NOC-JUMP01 (10.20.10.10), an established admin account on its usual jump host, and the change itself (a NAT/ACL adjustment for a vendor integration) has no connection to edge-rtr01 or any external IP of concern. The absence of a change ticket is NOT, by itself, evidence of compromise — undocumented-but-legitimate admin work occurs routinely in this environment."
+    },
+    {
+      "id": "competing_pentest_pt2026_04",
+      "category": "competing_narrative",
+      "summary": "2026-06-05 to 06-07 activity by contractor account extpt-coalridge against edge-rtr01 and fw01, including a temporary GRE test tunnel to 192.0.2.50, torn down at engagement close.",
+      "encounter_tags": ["competing_pentest_pt2026_04"],
+      "decisive_evidence_tags": ["pentest_pt2026_04_record"],
+      "correct_label": "Authorized — a pre-approved penetration test (engagement PT-2026-04, 2026-06-05 to 06-07, scoped to edge-rtr01 and fw01); not part of any intrusion. Its temporary test tunnel (to 192.0.2.50) was torn down at engagement close, consistent with the OOB tap observing it only during the engagement window.",
+      "decisive_evidence_description": "The PT-2026-04 engagement record in the GRC system of record (vendor Coalridge Security, authorized window 2026-06-05 to 06-07, scope edge-rtr01+fw01, approved source IPs 192.0.2.10-12, contractor account extpt-coalridge, status Completed). The contractor account's activity, source IPs, or the existence of its temporary test tunnel are NOT sufficient on their own to authorize or implicate it — the engagement record is what confirms authorization and confirms the test tunnel was torn down at close."
+    },
+    {
+      "id": "competing_spray",
+      "category": "competing_narrative",
+      "summary": "2026-06-08 credential-spray burst (~500 attempts) from 103.41.0.0/24 against edge-rtr01 and fw01, zero successes.",
+      "encounter_tags": ["competing_spray"],
+      "decisive_evidence_tags": ["spray_zero_success"],
+      "correct_label": "Unrelated noise — a failed credential-spray burst from 103.41.0.0/24 against edge-rtr01 and fw01 on 2026-06-08 with zero successful authentications; not evidence of any compromise.",
+      "decisive_evidence_description": "Explicit confirmation that zero authentications from 103.41.0.0/24 succeeded against edge-rtr01 or fw01, at any time. The attempt volume (~500) or the fact that it targeted these devices is NOT sufficient on its own to implicate this burst — only the zero-successful-authentications check rules it out."
+    }
+  ]
+}

@@ -1,0 +1,84 @@
+{
+  "decisive_source_ids": [
+    "edge_config",
+    "aaa_accounting",
+    "edge_wan_netflow"
+  ],
+  "sources": {
+    "edge_config": {
+      "exists": true,
+      "coverage": "running-config via config-compliance pull",
+      "returns": [
+        "incident_edge_config_malicious"
+      ]
+    },
+    "aaa_accounting": {
+      "exists": true,
+      "coverage": "centralized TACACS+/AAA accounting",
+      "returns": [
+        "incident_aaa_attacker",
+        "aaa_legit_only"
+      ]
+    },
+    "edge_wan_netflow": {
+      "exists": true,
+      "coverage": "edge WAN-interface NetFlow incl. non-TCP/UDP",
+      "returns": [
+        "incident_edge_wan_netflow"
+      ]
+    },
+    "core_netflow": {
+      "exists": true,
+      "coverage": "inter-segment east-west + internet-egress",
+      "returns": [
+        "core_netflow_eastwest"
+      ]
+    },
+    "fw_egress": {
+      "exists": true,
+      "coverage": "perimeter firewall internal-segment egress",
+      "returns": [
+        "fw_egress_offpath"
+      ]
+    },
+    "device_logs": {
+      "exists": true,
+      "coverage": "edge-rtr01 local log store current contents",
+      "returns": [
+        "device_logs_cleared_gap"
+      ]
+    },
+    "device_integrity": {
+      "exists": true,
+      "coverage": "device integrity self-report",
+      "returns": [
+        "device_integrity_selfreport_untrusted"
+      ]
+    },
+    "recs_audit": {
+      "exists": true,
+      "coverage": "RECS-DB01 host access audit",
+      "returns": [
+        "recs_audit_legit"
+      ]
+    },
+    "grc_engagement": {
+      "exists": true,
+      "coverage": "GRC system of record",
+      "returns": [
+        "grc_pentest_record"
+      ]
+    },
+    "host_edr": {
+      "exists": true,
+      "coverage": "host EDR",
+      "returns": [
+        "host_edr_clean"
+      ]
+    },
+    "oob_tap": {
+      "exists": false,
+      "coverage": "no out-of-band capture deployed in this environment"
+    }
+  }
+}

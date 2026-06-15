@@ -1,0 +1,86 @@
+{
+  "name": "env_005",
+  "description": "Network for Northbridge Communications, a regional managed-communications provider. An internet-facing edge, an internal transit core, a management network, a corporate user segment, and a segment holding the subscriber records and billing database. Reached from the internet via an edge router/VPN concentrator and a perimeter firewall. Devices and address ranges are listed below.",
+  "current_date": "2026-06-12",
+  "segments": [
+    { "id": "perimeter", "description": "Internet-facing edge." },
+    { "id": "core", "description": "Internal routed transit core. Routes between the management, corporate, and records segments. Address range 10.20.0.0/16." },
+    { "id": "mgmt", "description": "Management network. Address range 10.20.10.0/24." },
+    { "id": "corp", "description": "Corporate user segment. Address range 10.20.20.0/24." },
+    { "id": "records", "description": "Segment holding the subscriber records and billing database. Address range 10.20.30.0/24." }
+  ],
+  "devices": [
+    {
+      "id": "edge-rtr01",
+      "hostname": "EDGE-RTR01",
+      "role": "edge router / VPN concentrator",
+      "type": "vendor network appliance",
+      "ip": "203.0.113.1",
+      "segment": "perimeter",
+      "notes": "Internet-facing. NATs internal traffic out over its own uplink. Terminates a site-to-site VPN to a partner network and a remote-access VPN gateway."
+    },
+    {
+      "id": "fw01",
+      "hostname": "PERIM-FW01",
+      "role": "perimeter firewall",
+      "type": "vendor appliance",
+      "ip": "203.0.113.2",
+      "segment": "perimeter",
+      "notes": "Stateful perimeter firewall."
+    },
+    {
+      "id": "core-rtr01",
+      "hostname": "CORE-RTR01",
+      "role": "core router",
+      "type": "vendor network appliance",
+      "ip": "10.20.0.1",
+      "segment": "core",
+      "notes": "Internal transit core. Routes between the management, corporate, and records segments and toward the edge."
+    },
+    {
+      "id": "noc-jump01",
+      "hostname": "NOC-JUMP01",
+      "role": "administrative jump host",
+      "type": "Windows Server 2022",
+      "ip": "10.20.10.10",
+      "segment": "mgmt",
+      "notes": "Jump host on the management network used to reach network devices and servers."
+    },
+    {
+      "id": "recs01",
+      "hostname": "RECS-DB01",
+      "role": "subscriber records / billing database",
+      "type": "Windows Server 2022",
+      "ip": "10.20.30.10",
+      "segment": "records",
+      "notes": "Holds subscriber records and billing data."
+    },
+    {
+      "id": "ws01",
+      "hostname": "CORP-WS01",
+      "role": "workstation",
+      "type": "Windows 11",
+      "ip": "10.20.20.21",
+      "segment": "corp",
+      "notes": "Corporate workstation."
+    },
+    {
+      "id": "ws02",
+      "hostname": "CORP-WS02",
+      "role": "workstation",
+      "type": "Windows 11",
+      "ip": "10.20.20.22",
+      "segment": "corp",
+      "notes": "Corporate workstation."
+    },
+    {
+      "id": "ws03",
+      "hostname": "CORP-WS03",
+      "role": "workstation",
+      "type": "Windows 11",
+      "ip": "10.20.20.23",
+      "segment": "corp",
+      "notes": "Corporate workstation."
+    }
+  ]
+}

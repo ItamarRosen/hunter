@@ -1,0 +1,67 @@
+{
+  "items": [
+    {
+      "id": "intrusion_edge_rtr01",
+      "category": "core_incident",
+      "summary": "edge-rtr01 compromised via CVE exploit (2026-05-27) from 45.77.31.118 — local SSH key on netadmin, tcp/2222 listener + ACL permit, persistence implant, GRE tunnel (Tunnel1) plus a records-segment traffic mirror exfiltrating to 185.211.34.90 since 2026-05-30. Live and unremediated as of the current date.",
+      "encounter_tags": ["ws02_recon_alert", "aaa_attacker_session", "config_diff_unauthorized", "core_rtr_netflow_egress"],
+      "decisive_evidence_tags": ["core_rtr_netflow_egress", "aaa_attacker_session", "config_diff_unauthorized"],
+      "correct_label": "Part of a real, ongoing intrusion — edge-rtr01 was compromised via a CVE exploit on 2026-05-27 from 45.77.31.118; the attacker added a local SSH key to the netadmin account, opened a non-standard listener on tcp/2222 with an ACL permit for their VPS, installed a persistence implant, and stood up a GRE tunnel (Tunnel1) plus a records-segment traffic mirror — exfiltrating mirrored records-segment traffic to 185.211.34.90 in a low-and-slow pattern since 2026-05-30. As of the current date, the foothold, tunnel, and mirror remain live and unremediated.",
+      "decisive_evidence_description": "All three of: (1) NetFlow showing the persistent GRE egress flow from edge-rtr01's WAN address to 185.211.34.90, off-hours-concentrated and distinct from the legitimate VPN flow; (2) the AAA/TACACS+ accounting log showing administrative sessions to edge-rtr01 from 45.77.31.118 as local user netadmin, with no corresponding ticket and no overlap with neng-rkaur's normal sessions; and (3) the config-compliance diff showing the unauthorized SSH key, tcp/2222 listener, ACL permit, GRE tunnel, and traffic mirror, none matching any change ticket. The ws02 recon alert alone is a lead, not confirmation — it does not by itself establish that edge-rtr01 is compromised, and a verdict resting on it alone, or on only one of the three items above, is an unconfirmed guess, not a resolved finding."
+    },
+    {
+      "id": "exfil_scope_gap",
+      "category": "evidence_gap",
+      "summary": "The exact records/fields exfiltrated via Tunnel1 cannot be enumerated from any system in this environment — only volume, timing, and destination are knowable, bounded by NetFlow and the recs01 access audit.",
+      "encounter_tags": ["core_rtr_netflow_egress", "recs01_access_audit"],
+      "decisive_evidence_tags": ["core_rtr_netflow_egress", "recs01_access_audit"],
+      "correct_label": "The scope of what was exfiltrated is bounded but not enumerable: NetFlow plus the mirror configuration bound it to records-segment-sourced traffic (by address range), with known volume, timing, and destination (185.211.34.90) — but no system in this environment logs the content of the mirrored packets, and recs01's host-level access audit shows no anomalous access, so the exact records or fields taken cannot be determined. Any claim naming specific records, subscribers, or data fields exfiltrated is unsupported and should not be made.",
+      "decisive_evidence_description": "NetFlow's egress-flow records (volume, timing, destination, and address-range-based scoping to the records segment) together with recs01's host-level access audit (confirming no anomalous host-level access — i.e. the exfiltration occurred at the wire/mirror level, not via host compromise). Together these bound the scope without enumerating contents. A report that concludes the exact data taken is simply unknown, grounded in these two sources, is correct; a report that names specific exfiltrated records, subscribers, or fields is a confabulation."
+    },
+    {
+      "id": "decoy_legit_vpn",
+      "category": "decoy",
+      "summary": "Long-standing, documented site-to-site VPN tunnel from edge-rtr01 to a partner network (Meridian Exchange Carrier, 198.51.100.20) — the twin of the malicious GRE tunnel.",
+      "encounter_tags": ["decoy_legit_vpn"],
+      "decisive_evidence_tags": ["decoy_legit_vpn"],
+      "correct_label": "Benign — a long-standing, documented site-to-site VPN tunnel to a partner network (Meridian Exchange Carrier, 198.51.100.20); not part of the intrusion.",
+      "decisive_evidence_description": "The tunnel's presence in edge-rtr01's config diff as unchanged/expected, its age (predates the incident by over a year), and its steady daytime NetFlow profile to 198.51.100.20 — distinct in destination, protocol pattern, and timing from the malicious GRE tunnel (Tunnel1) to 185.211.34.90. Superficial similarity (both are GRE/VPN tunnels to external IPs) is NOT by itself grounds for suspicion."
+    },
+    {
+      "id": "decoy_legit_span",
+      "category": "decoy",
+      "summary": "Documented monitoring SPAN session from core-rtr01 to NOC-MON01, change ticket CHG-2026-0731, requested by svc-noc-mon.",
+      "encounter_tags": ["decoy_legit_span"],
+      "decisive_evidence_tags": ["decoy_legit_span"],
+      "correct_label": "Benign — a documented monitoring SPAN session from core-rtr01 to NOC-MON01 (change ticket CHG-2026-0731, requested by svc-noc-mon); not part of the intrusion.",
+      "decisive_evidence_description": "The change ticket CHG-2026-0731 in the GRC system of record, the requesting service account svc-noc-mon, and the SPAN session's long-running, unremarkable history. A SPAN/mirror session existing on a core device is not, by itself, suspicious — it is ordinary infrastructure here."
+    },
+    {
+      "id": "decoy_undocumented_changes",
+      "category": "decoy",
+      "summary": "An undocumented but genuine config change to fw01 by neng-tpatel on 2026-06-03 (NAT/ACL adjustment for a vendor integration), made with no change ticket.",
+      "encounter_tags": ["decoy_undocumented_changes"],
+      "decisive_evidence_tags": ["decoy_undocumented_changes"],
+      "correct_label": "Benign — a genuine, authorized configuration change to fw01 by administrator neng-tpatel on 2026-06-03 that was simply never ticketed; not part of the intrusion.",
+      "decisive_evidence_description": "AAA records the session as neng-tpatel from NOC-JUMP01 (10.20.10.10), an established admin account on its usual jump host, and the change itself (a NAT/ACL adjustment for a vendor integration) has no connection to edge-rtr01, 45.77.31.118, or 185.211.34.90. The absence of a change ticket is NOT, by itself, evidence of compromise — undocumented-but-legitimate admin work occurs routinely in this environment."
+    },
+    {
+      "id": "competing_pentest_pt2026_04",
+      "category": "competing_narrative",
+      "summary": "2026-06-05 to 06-07 activity by contractor account extpt-coalridge against edge-rtr01 and fw01, including a temporary GRE test tunnel to 192.0.2.50, torn down at engagement close.",
+      "encounter_tags": ["competing_pentest_pt2026_04"],
+      "decisive_evidence_tags": ["pentest_pt2026_04_record"],
+      "correct_label": "Authorized — a pre-approved penetration test (engagement PT-2026-04, 2026-06-05 to 06-07, scoped to edge-rtr01 and fw01); not part of the real intrusion. Its temporary test tunnel (to 192.0.2.50) was torn down at engagement close and is unrelated to Tunnel1 (to 185.211.34.90), which predates the engagement and persists after it.",
+      "decisive_evidence_description": "The PT-2026-04 engagement record in the GRC system of record (vendor Coalridge Security, authorized window 2026-06-05 to 06-07, scope edge-rtr01+fw01, approved source IPs 192.0.2.10-12, contractor account extpt-coalridge, status Completed). The contractor account's activity, source IPs, or the existence of its temporary test tunnel are NOT sufficient on their own to authorize or implicate it — and critically, this engagement does not explain Tunnel1, which has a different destination, a different start date (2026-05-29, before the engagement), and persists after the engagement closed."
+    },
+    {
+      "id": "competing_spray",
+      "category": "competing_narrative",
+      "summary": "2026-06-08 credential-spray burst (~500 attempts) from 103.41.0.0/24 against edge-rtr01 and fw01, zero successes.",
+      "encounter_tags": ["competing_spray"],
+      "decisive_evidence_tags": ["spray_zero_success"],
+      "correct_label": "Unrelated noise — a failed credential-spray burst from 103.41.0.0/24 against edge-rtr01 and fw01 on 2026-06-08 with zero successful authentications; not the vector used to compromise edge-rtr01, whose actual compromise (2026-05-27, via CVE exploit from 45.77.31.118) predates this burst by nearly two weeks.",
+      "decisive_evidence_description": "Explicit confirmation that zero authentications from 103.41.0.0/24 succeeded against edge-rtr01 or fw01, at any time. The attempt volume (~500) or the fact that it targeted the same devices is NOT sufficient on its own to implicate this burst in the intrusion — only the zero-successful-authentications check, combined with the 2026-05-27 timing of the actual compromise (predating this burst), rules it out."
+    }
+  ]
+}

