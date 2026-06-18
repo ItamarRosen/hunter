@@ -45,10 +45,7 @@ SUBMIT_REPORT_TOOL = {
                         },
                         "evidence": {
                             "type": "string",
-                            "description": (
-                                "Narrative summary of the evidence supporting this "
-                                "finding, referencing what collect_evidence returned."
-                            ),
+                            "description": "Narrative summary of the evidence supporting this finding.",
                         },
                         "confidence": {"type": "string", "enum": ["low", "medium", "high"]},
                         "severity": {"type": "string", "enum": ["low", "medium", "high", "critical"]},
@@ -123,7 +120,6 @@ class HunterEngine:
         self._model = model
         self._max_collections = max_collections
         self._collect_tool = REQUEST_EVIDENCE_TOOL if dispatcher is not None else COLLECT_EVIDENCE_TOOL
-        self._collect_tool_name = "request_evidence" if dispatcher is not None else "collect_evidence"
         prompt_path = HUNTER_DISPATCHER_PROMPT_PATH if dispatcher is not None else HUNTER_PROMPT_PATH
         self._system_prompt = prompt_path.read_text()
         self._verifier_enabled = verifier_enabled
@@ -141,7 +137,7 @@ class HunterEngine:
                 "content": (
                     "Network topology:\n"
                     f"{json.dumps(self._topology, indent=2)}\n\n"
-                    f"You have up to {self._max_collections} {self._collect_tool_name} calls "
+                    f"You have up to {self._max_collections} {self._collect_tool["name"]} calls "
                     f"for this investigation. {closing}"
                 ),
             }
@@ -153,7 +149,7 @@ class HunterEngine:
         self.verifier_log: list[dict] = []
         self._gate_attempts = 0
 
-        print(f"=== Hunt started — budget: {self._max_collections} {self._collect_tool_name} calls ===\n")
+        print(f"=== Hunt started — budget: {self._max_collections} {self._collect_tool["name"]} calls ===\n")
 
         for round_num in range(max_rounds + 1):
             budget_exhausted = collections_used >= self._max_collections or round_num == max_rounds
@@ -199,35 +195,24 @@ class HunterEngine:
 
             tool_results = []
             for block in other_blocks:
-                if block.name in ("collect_evidence", "request_evidence"):
+                if block.name == self._collect_tool["name"]:
                     collections_used += 1
-                    if block.name == "request_evidence":
+                    if self._dispatcher is not None:
                         description = block.input["description"]
                         print(f"[{collections_used}/{self._max_collections}] request_evidence: {description}")
                         evidence = self._dispatcher.dispatch(description)
                     else:
                         device_id = block.input["device_id"]
-                        request = block.input["request"]
+                        request   = block.input["request"]
                         print(f"[{collections_used}/{self._max_collections}] collect_evidence({device_id}): {request}")
                         evidence = self._collector.collect(device_id=device_id, request=request)
 
-                    status = "found" if evidence.found else "not found"
-                    note = f" — {evidence.note}" if evidence.note else ""
-                    preview = " ".join(evidence.data.split())
-                    if len(preview) > 200:
-                        preview = preview[:200] + "..."
-                    print(f"    -> {status}{note}")
-                    print(f"    {preview}\n")
-
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": json.dumps({
-                            "found": evidence.found,
-                            "data": evidence.data,
-                            "note": evidence.note,
-                        }),
-                    })
+                    _print_evidence(evidence)
+                    tool_results.append(_make_tool_result(block.id, {
+                        "found": evidence.found,
+                        "data":  evidence.data,
+                        "note":  evidence.note,
+                    }))
                 elif block.name == "record_conclusion" and self._verifier_enabled:
                     conclusion_id = block.input["conclusion_id"]
                     statement = block.input["statement"]
@@ -265,20 +250,14 @@ class HunterEngine:
                         "force_resolved": False,
                     }
 
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": json.dumps(verdict),
-                    })
+                    tool_results.append(_make_tool_result(block.id, verdict))
 
                 else:
                     # Catch-all: tool not available in this mode — must still
                     # return a tool_result or the API will see orphaned tool_use blocks.
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": json.dumps({"error": f"Tool '{block.name}' is not available in this mode."}),
-                    })
+                    tool_results.append(_make_tool_result(
+                        block.id, {"error": f"Tool '{block.name}' is not available in this mode."}
+                    ))
 
             if report_block is not None:
                 unresolved_items = [
@@ -311,21 +290,16 @@ class HunterEngine:
                             "round": round_num,
                             "unresolved_conclusion_ids": [p["conclusion_id"] for p in unresolved_payload],
                         })
-                        tool_results.append({
-                            "type": "tool_result",
-                            "tool_use_id": report_block.id,
-                            "content": json.dumps({
-                                "accepted": False,
-                                "reason": (
-                                    "One or more working conclusions have not yet "
-                                    "been resolved by the verifier. Address each "
-                                    "one per its binding_directive, then call "
-                                    "record_conclusion again on the same "
-                                    "conclusion_id before resubmitting."
-                                ),
-                                "unresolved_conclusions": unresolved_payload,
-                            }),
-                        })
+                        tool_results.append(_make_tool_result(report_block.id, {
+                            "accepted": False,
+                            "reason": (
+                                "One or more working conclusions have not yet been "
+                                "resolved by the verifier. Address each one per its "
+                                "binding_directive, then call record_conclusion again "
+                                "on the same conclusion_id before resubmitting."
+                            ),
+                            "unresolved_conclusions": unresolved_payload,
+                        }))
                         messages.append({"role": "user", "content": tool_results})
                         if on_step:
                             on_step(messages)
@@ -346,22 +320,17 @@ class HunterEngine:
 
                     if not accepted:
                         self._gate_attempts += 1
-                        tool_results.append({
-                            "type": "tool_result",
-                            "tool_use_id": report_block.id,
-                            "content": json.dumps({
-                                "accepted": False,
-                                "reason": (
-                                    "One or more findings in your draft report "
-                                    "have not been confirmed by the verifier. "
-                                    "Address each one per its binding_directive "
-                                    "-- collect the named discriminating evidence "
-                                    "and revise the finding, or downgrade it -- "
-                                    "then resubmit."
-                                ),
-                                "unresolved_conclusions": unresolved_payload,
-                            }),
-                        })
+                        tool_results.append(_make_tool_result(report_block.id, {
+                            "accepted": False,
+                            "reason": (
+                                "One or more findings in your draft report have not "
+                                "been confirmed by the verifier. Address each one per "
+                                "its binding_directive — collect the named "
+                                "discriminating evidence and revise the finding, or "
+                                "downgrade it — then resubmit."
+                            ),
+                            "unresolved_conclusions": unresolved_payload,
+                        }))
                         messages.append({"role": "user", "content": tool_results})
                         if on_step:
                             on_step(messages)
@@ -383,6 +352,20 @@ class HunterEngine:
 
         # Unreachable: the final round forces submit_report.
         return HuntResult(report=None, transcript=messages)
+
+
+def _make_tool_result(tool_use_id: str, content: dict) -> dict:
+    return {"type": "tool_result", "tool_use_id": tool_use_id, "content": json.dumps(content)}
+
+
+def _print_evidence(evidence: Any) -> None:
+    status  = "found" if evidence.found else "not found"
+    note    = f" — {evidence.note}" if evidence.note else ""
+    preview = " ".join(evidence.data.split())
+    if len(preview) > 200:
+        preview = preview[:200] + "..."
+    print(f"    -> {status}{note}")
+    print(f"    {preview}\n")
 
 
 def _print_report(report: dict) -> None:

@@ -6,12 +6,15 @@ The Hunter never sees this component. All collection capabilities live here.
 Flow per request_evidence call:
   1. Haiku (tool calls) decides which protocol tool(s) to invoke and with
      what exact target/command, using the network topology as context.
-  2. Each tool runs — replay reads a cassette; live opens a real connection.
-  3. Raw output is normalized by the generic parser (Haiku) to clean JSON.
+  2. Each tool runs — replay reads a recording; live opens a real session.
+  3. Raw output is normalised by the generic parser (Haiku) to clean JSON.
   4. Results are returned with provenance + trust tier attached.
 
-Adding a new protocol: add an entry to COLLECTION_TOOLS, implement
-_run_<protocol> below, and add its trust tier to TRUST_TIERS.
+Adding a new protocol:
+  1. Add an entry to COLLECTION_TOOLS (shown to Haiku for routing).
+  2. Add its trust tier to TRUST_TIERS.
+  3. Implement _<protocol>_replay and/or _<protocol>_live as methods.
+  4. Register them in __init__ under self._handlers.
 """
 
 from __future__ import annotations
@@ -19,7 +22,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import anthropic
 
@@ -27,17 +30,18 @@ from engine import parsers
 from engine.evidence import EvidenceResponse
 
 RECORDINGS_DIR = Path(__file__).parent.parent / "recordings"
+SIZE_LIMIT = 8_000  # chars; truncate and signal the Hunter if exceeded
 
-SIZE_LIMIT = 8_000  # chars; beyond this the tool truncates and signals the Hunter
-
+# Maps tool name → trust tier label returned to the Hunter.
 TRUST_TIERS: dict[str, str] = {
     "ssh_cli":       "ssh_cli",        # device self-reporting, medium trust
     "snmp_get":      "snmp",           # device self-reporting, medium trust
-    "netflow_query": "netflow",        # usually off-device collector, higher trust
+    "netflow_query": "netflow",        # off-device collector, higher trust
     "oob_tap":       "off_device_tap", # independent vantage, highest trust
     "host_edr":      "host_edr",       # local agent, lower trust
 }
 
+# Ordered from highest trust (index 0) to lowest trust (last index).
 _TRUST_RANK = [
     "off_device_tap", "netflow", "ssh_cli", "snmp",
     "syslog", "vendor_api", "host_edr", "host_agent", "unknown",
@@ -53,14 +57,8 @@ COLLECTION_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "target": {
-                    "type": "string",
-                    "description": "Device ID from the topology.",
-                },
-                "command": {
-                    "type": "string",
-                    "description": "Exact CLI command to run, e.g. 'show ip route' or 'show interfaces'.",
-                },
+                "target":  {"type": "string", "description": "Device ID from the topology."},
+                "command": {"type": "string", "description": "Exact CLI command, e.g. 'show ip route'."},
             },
             "required": ["target", "command"],
         },
@@ -74,14 +72,8 @@ COLLECTION_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "target": {
-                    "type": "string",
-                    "description": "Device ID from the topology.",
-                },
-                "oid": {
-                    "type": "string",
-                    "description": "SNMP OID or MIB object name to query.",
-                },
+                "target": {"type": "string", "description": "Device ID from the topology."},
+                "oid":    {"type": "string", "description": "SNMP OID or MIB object name."},
             },
             "required": ["target", "oid"],
         },
@@ -95,18 +87,9 @@ COLLECTION_TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "target": {
-                    "type": "string",
-                    "description": "NetFlow collector or exporter device ID.",
-                },
-                "filter": {
-                    "type": "string",
-                    "description": "Flow filter, e.g. 'src 10.0.1.0/24' or 'dst 185.211.34.90'.",
-                },
-                "time_range": {
-                    "type": "string",
-                    "description": "Time range, e.g. 'last 24h' or '2026-06-10 to 2026-06-18'.",
-                },
+                "target":     {"type": "string", "description": "NetFlow collector or exporter device ID."},
+                "filter":     {"type": "string", "description": "Flow filter, e.g. 'src 10.0.1.0/24'."},
+                "time_range": {"type": "string", "description": "Time range, e.g. 'last 24h'."},
             },
             "required": ["target", "filter"],
         },
@@ -123,12 +106,15 @@ request covers multiple devices or data types.
 Use exact device IDs from the topology. Use exact CLI commands or query strings.
 Do not interpret or analyse the request — just translate it into precise collection actions."""
 
+# A handler takes the full inputs dict and returns (found, raw_text).
+Handler = Callable[[dict], tuple[bool, str]]
+
 
 class Dispatcher:
-    """Routes Hunter requests to the correct protocol tool and returns parsed evidence.
+    """Routes Hunter requests to concrete protocol tools and returns parsed evidence.
 
-    Credentials are never passed to the LLM. In live mode, the session pool
-    fetches them from the credential store at connection time.
+    Credentials never touch any LLM — fetched from the CredentialStore at
+    connection time and held in the session pool.
     """
 
     def __init__(
@@ -138,16 +124,26 @@ class Dispatcher:
         scenario: str,
         model: str = "claude-haiku-4-5-20251001",
         mode: str = "replay",
-        credential_store: "CredentialStore | None" = None,
+        credential_store: CredentialStore | None = None,
     ) -> None:
         self._client = client
         self._topology = topology
-        self._scenario = scenario
         self._model = model
         self._mode = mode
         self._recordings_dir = RECORDINGS_DIR / scenario
         self._sessions: dict[tuple[str, str], Any] = {}
         self._creds = credential_store or _NullCredentialStore()
+
+        if mode == "replay":
+            self._handlers: dict[str, Handler] = {
+                "ssh_cli": self._ssh_cli_replay,
+            }
+        elif mode == "live":
+            self._handlers = {
+                "ssh_cli": self._ssh_cli_live,
+            }
+        else:
+            raise ValueError(f"Unknown dispatcher mode: {mode!r}")
 
     # ------------------------------------------------------------------
     # Public API
@@ -169,13 +165,11 @@ class Dispatcher:
         for tool_name, inputs in tool_calls:
             found, raw = self._run_tool(tool_name, inputs)
             target = inputs.get("target", "?")
-            query = inputs.get("command") or inputs.get("oid") or inputs.get("filter", "")
-            tier = TRUST_TIERS.get(tool_name, "unknown")
+            query  = inputs.get("command") or inputs.get("oid") or inputs.get("filter", "")
+            tier   = TRUST_TIERS.get(tool_name, "unknown")
 
             if not found:
-                parts.append(
-                    f"[{tool_name} | target={target} | query={query!r} → NOT FOUND: {raw}]"
-                )
+                parts.append(f"[{tool_name} | target={target} | query={query!r} → NOT FOUND: {raw}]")
                 continue
 
             any_found = True
@@ -190,7 +184,7 @@ class Dispatcher:
         return EvidenceResponse(found=any_found, data="\n\n".join(parts), note=note)
 
     def close(self) -> None:
-        """Close all open sessions. Call at end of hunt."""
+        """Close all open sessions."""
         for session in self._sessions.values():
             try:
                 session.close()
@@ -199,7 +193,7 @@ class Dispatcher:
         self._sessions.clear()
 
     # ------------------------------------------------------------------
-    # Routing — Haiku decides which tool(s) to call
+    # Routing — Haiku decides which tool(s) to invoke
     # ------------------------------------------------------------------
 
     def _route(self, description: str) -> list[tuple[str, dict]]:
@@ -220,32 +214,26 @@ class Dispatcher:
         return [
             (block.name, block.input)
             for block in response.content
-            if hasattr(block, "type") and block.type == "tool_use"
+            if block.type == "tool_use"
         ]
 
     # ------------------------------------------------------------------
-    # Tool execution
+    # Tool execution — registry dispatch
     # ------------------------------------------------------------------
 
     def _run_tool(self, name: str, inputs: dict) -> tuple[bool, str]:
-        target = inputs.get("target", "")
-        if self._mode == "replay":
-            if name == "ssh_cli":
-                command = inputs.get("command") or inputs.get("cmd") or inputs.get("query", "")
-                if not command:
-                    return False, "ssh_cli called without a command."
-                return self._ssh_cli_replay(target, command)
-            return False, f"{name} has no replay recordings (not yet implemented)."
-        elif self._mode == "live":
-            if name == "ssh_cli":
-                command = inputs.get("command") or inputs.get("cmd") or inputs.get("query", "")
-                if not command:
-                    return False, "ssh_cli called without a command."
-                return self._ssh_cli_live(target, command)
-            return False, f"{name} live collection not yet implemented."
-        return False, f"Unknown mode: {self._mode!r}"
+        handler = self._handlers.get(name)
+        if handler is None:
+            return False, f"'{name}' not available in {self._mode!r} mode."
+        return handler(inputs)
 
-    def _ssh_cli_replay(self, target: str, command: str) -> tuple[bool, str]:
+    # -- Replay handlers -----------------------------------------------
+
+    def _ssh_cli_replay(self, inputs: dict) -> tuple[bool, str]:
+        target  = inputs["target"]
+        command = inputs.get("command") or inputs.get("cmd") or inputs.get("query", "")
+        if not command:
+            return False, "ssh_cli requires a command."
         filename = re.sub(r"[^\w]+", "_", command.strip().lower()).strip("_") + ".txt"
         path = self._recordings_dir / "ssh_cli" / target / filename
         if not path.exists():
@@ -255,40 +243,54 @@ class Dispatcher:
             raw = raw[:SIZE_LIMIT] + f"\n\n[TRUNCATED at {SIZE_LIMIT} chars — refine your query]"
         return True, raw
 
-    def _ssh_cli_live(self, target: str, command: str) -> tuple[bool, str]:
-        # Session pool: reuse existing connection or open a new one
+    # -- Live handlers -------------------------------------------------
+
+    def _ssh_cli_live(self, inputs: dict) -> tuple[bool, str]:
+        target  = inputs["target"]
+        command = inputs.get("command") or inputs.get("cmd") or inputs.get("query", "")
+        if not command:
+            return False, "ssh_cli requires a command."
         key = ("ssh", target)
         if key not in self._sessions:
             creds = self._creds.get("ssh", target)
             if creds is None:
-                return False, f"No credentials for SSH to {target}."
-            self._sessions[key] = _open_ssh(target, creds)
-        session = self._sessions[key]
+                return False, f"No SSH credentials for {target}."
+            try:
+                from netmiko import ConnectHandler
+            except ImportError:
+                raise RuntimeError("pip install netmiko to use live SSH collection.")
+            self._sessions[key] = ConnectHandler(
+                device_type=creds.get("device_type", "cisco_ios"),
+                host=creds.get("host", target),
+                username=creds["user"],
+                password=creds.get("password"),
+                key_file=creds.get("key_file"),
+                port=int(creds.get("port", 22)),
+            )
         try:
-            return True, session.run(command)
+            return True, self._sessions[key].send_command(command)
         except Exception as e:
             return False, str(e)
 
 
 # ------------------------------------------------------------------
-# Credentials interface
+# Credential store
 # ------------------------------------------------------------------
 
 class CredentialStore:
-    """Interface for credential lookup. Never passes secrets to any LLM."""
+    """Credential lookup interface. Secrets never reach any LLM."""
 
     def get(self, protocol: str, target: str) -> dict | None:
         raise NotImplementedError
 
 
 class _NullCredentialStore(CredentialStore):
-    """Used in replay mode — no credentials needed."""
     def get(self, protocol: str, target: str) -> dict | None:
         return None
 
 
 class EnvCredentialStore(CredentialStore):
-    """Loads credentials from a JSON file (gitignored) or env var HUNTER_CREDS."""
+    """Loads credentials from a JSON file or the HUNTER_CREDS environment variable."""
 
     def __init__(self, path: str | Path | None = None) -> None:
         import os
@@ -306,33 +308,6 @@ class EnvCredentialStore(CredentialStore):
 # ------------------------------------------------------------------
 
 def _min_trust(tiers: list[str]) -> str:
-    if not tiers:
-        return "unknown"
-    return max(
-        tiers,
-        key=lambda t: _TRUST_RANK.index(t) if t in _TRUST_RANK else len(_TRUST_RANK),
-    )
-
-
-def _open_ssh(target: str, creds: dict) -> Any:
-    """Open a real SSH connection. Requires paramiko."""
-    try:
-        import paramiko
-    except ImportError:
-        raise RuntimeError("pip install paramiko to use live SSH collection.")
-    client = paramiko.SSHClient()
-    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    client.connect(
-        hostname=creds.get("host", target),
-        username=creds["user"],
-        password=creds.get("password"),
-        key_filename=creds.get("key_file"),
-        port=creds.get("port", 22),
-    )
-    client.run = lambda cmd: _ssh_run(client, cmd)
-    return client
-
-
-def _ssh_run(client: Any, command: str) -> str:
-    _, stdout, stderr = client.exec_command(command)
-    return stdout.read().decode() + stderr.read().decode()
+    """Return the least-trusted tier in the list."""
+    rank = lambda t: _TRUST_RANK.index(t) if t in _TRUST_RANK else len(_TRUST_RANK)
+    return max(tiers, key=rank)

@@ -1,4 +1,4 @@
-"""Generic evidence parser: normalizes raw protocol output to clean JSON.
+"""Generic evidence parser: normalises raw protocol output to clean JSON.
 
 One Haiku call per collection result. The protocol and command are passed as
 context so Haiku knows what kind of data it's looking at, but the parsing
@@ -26,16 +26,17 @@ Rules:
 
 
 def parse(raw: str, protocol: str, command: str, client: anthropic.Anthropic, model: str) -> dict:
-    context = f"Protocol: {protocol}\nCommand/query: {command}\n\nRaw output:\n{raw}"
     resp = client.messages.create(
         model=model,
         max_tokens=2048,
         system=_SYSTEM,
-        messages=[{"role": "user", "content": context}],
+        messages=[{"role": "user", "content": f"Protocol: {protocol}\nCommand/query: {command}\n\nRaw output:\n{raw}"}],
     )
     text = resp.content[0].text.strip()
     m = re.search(r"\{.*\}", text, re.DOTALL)
+    if not m:
+        return {"raw": text}
     try:
-        return json.loads(m.group(0)) if m else {"raw": text}
+        return json.loads(m.group(0))
     except json.JSONDecodeError:
         return {"raw": text}
