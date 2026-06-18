@@ -1,0 +1,52 @@
+{
+  "name": "Acme Corp — Edge Network",
+  "description": "Small enterprise network. Edge router connects to the ISP; core router handles internal routing; firewall sits between them.",
+  "devices": [
+    {
+      "id": "edge-rtr01",
+      "role": "edge_router",
+      "os": "Cisco IOS 16.9",
+      "segment": "perimeter",
+      "interfaces": [
+        "GigabitEthernet0/0 — LAN-MGMT (10.0.1.254/24)",
+        "GigabitEthernet0/1 — LAN-CORP (10.0.2.254/24)",
+        "GigabitEthernet0/3 — WAN-UPLINK (172.16.0.2/30, ISP handoff)"
+      ]
+    },
+    {
+      "id": "core-rtr01",
+      "role": "core_router",
+      "os": "Cisco IOS 16.9",
+      "segment": "internal",
+      "interfaces": [
+        "GigabitEthernet0/0 — uplink to edge (10.0.1.1/24)",
+        "GigabitEthernet0/1 — SERVERS (10.0.4.0/24)",
+        "GigabitEthernet0/2 — WORKSTATIONS (10.0.5.0/24)"
+      ]
+    },
+    {
+      "id": "fw01",
+      "role": "firewall",
+      "os": "Cisco ASA 9.16",
+      "segment": "perimeter",
+      "interfaces": [
+        "outside — WAN side",
+        "inside — 10.0.2.0/24"
+      ]
+    },
+    {
+      "id": "ws01",
+      "role": "admin_workstation",
+      "os": "Windows 10 22H2",
+      "segment": "mgmt",
+      "ip": "10.0.1.50"
+    }
+  ],
+  "segments": [
+    {"id": "perimeter", "cidr": "172.16.0.0/30", "description": "ISP handoff / WAN link"},
+    {"id": "mgmt",      "cidr": "10.0.1.0/24",   "description": "Management segment"},
+    {"id": "corp",      "cidr": "10.0.2.0/24",   "description": "Corporate LAN"},
+    {"id": "servers",   "cidr": "10.0.4.0/24",   "description": "Server segment"},
+    {"id": "workstations", "cidr": "10.0.5.0/24","description": "User workstations"}
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "scenario": "env_006_replay_demo",
+  "ground_truth": "compromised",
+  "items": [
+    {
+      "id": "unauthorized_static_route",
+      "category": "core_incident",
+      "summary": "Unauthorized static host route to 185.211.34.90/32 on edge-rtr01 — no change ticket, Abuse.ch-listed destination",
+      "correct_label": "Compromise — unauthorized C2-directed static route manually inserted on the edge router",
+      "encounter_tags": ["static_route_c2"],
+      "decisive_evidence_tags": ["static_route_c2"]
+    },
+    {
+      "id": "wan_uplink_anomaly",
+      "category": "supporting_evidence",
+      "summary": "Anomalous WAN egress on edge-rtr01 Gi0/3 (~48 Mbps out vs ~2.3 Mbps in, 892 GB cumulative outbound)",
+      "correct_label": "Suspicious — egress:ingress ratio ~20:1 inconsistent with normal admin activity; corroborates exfiltration via the static route",
+      "encounter_tags": ["wan_uplink_high_egress"],
+      "decisive_evidence_tags": ["wan_uplink_high_egress"]
+    }
+  ]
+}

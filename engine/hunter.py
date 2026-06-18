@@ -14,9 +14,10 @@ from typing import Any, Callable
 import anthropic
 
 from engine import report_gate, verifier
-from engine.evidence import COLLECT_EVIDENCE_TOOL, EvidenceCollector
+from engine.evidence import COLLECT_EVIDENCE_TOOL, REQUEST_EVIDENCE_TOOL, EvidenceCollector
 
 HUNTER_PROMPT_PATH = Path(__file__).parent / "prompts" / "hunter_system.md"
+HUNTER_DISPATCHER_PROMPT_PATH = Path(__file__).parent / "prompts" / "hunter_dispatcher_system.md"
 DEFAULT_MODEL = "claude-opus-4-8"
 DEFAULT_MAX_COLLECTIONS = 15
 MAX_GATE_REJECTIONS = 2
@@ -108,18 +109,23 @@ class HunterEngine:
         self,
         client: anthropic.Anthropic,
         topology: dict[str, Any],
-        collector: EvidenceCollector,
+        collector: EvidenceCollector | None = None,
         model: str = DEFAULT_MODEL,
         max_collections: int = DEFAULT_MAX_COLLECTIONS,
         verifier_enabled: bool = True,
         verifier_model: str | None = None,
+        dispatcher: Any = None,
     ) -> None:
         self._client = client
         self._topology = topology
         self._collector = collector
+        self._dispatcher = dispatcher
         self._model = model
         self._max_collections = max_collections
-        self._system_prompt = HUNTER_PROMPT_PATH.read_text()
+        self._collect_tool = REQUEST_EVIDENCE_TOOL if dispatcher is not None else COLLECT_EVIDENCE_TOOL
+        self._collect_tool_name = "request_evidence" if dispatcher is not None else "collect_evidence"
+        prompt_path = HUNTER_DISPATCHER_PROMPT_PATH if dispatcher is not None else HUNTER_PROMPT_PATH
+        self._system_prompt = prompt_path.read_text()
         self._verifier_enabled = verifier_enabled
         self._verifier_model = verifier_model or model
 
@@ -135,7 +141,7 @@ class HunterEngine:
                 "content": (
                     "Network topology:\n"
                     f"{json.dumps(self._topology, indent=2)}\n\n"
-                    f"You have up to {self._max_collections} collect_evidence calls "
+                    f"You have up to {self._max_collections} {self._collect_tool_name} calls "
                     f"for this investigation. {closing}"
                 ),
             }
@@ -147,7 +153,7 @@ class HunterEngine:
         self.verifier_log: list[dict] = []
         self._gate_attempts = 0
 
-        print(f"=== Hunt started — budget: {self._max_collections} collect_evidence calls ===\n")
+        print(f"=== Hunt started — budget: {self._max_collections} {self._collect_tool_name} calls ===\n")
 
         for round_num in range(max_rounds + 1):
             budget_exhausted = collections_used >= self._max_collections or round_num == max_rounds
@@ -155,10 +161,10 @@ class HunterEngine:
                 tools = [SUBMIT_REPORT_TOOL]
                 tool_choice = {"type": "tool", "name": "submit_report"}
             elif self._verifier_enabled:
-                tools = [COLLECT_EVIDENCE_TOOL, SUBMIT_REPORT_TOOL, RECORD_CONCLUSION_TOOL]
+                tools = [self._collect_tool, SUBMIT_REPORT_TOOL, RECORD_CONCLUSION_TOOL]
                 tool_choice = {"type": "auto"}
             else:
-                tools = [COLLECT_EVIDENCE_TOOL, SUBMIT_REPORT_TOOL]
+                tools = [self._collect_tool, SUBMIT_REPORT_TOOL]
                 tool_choice = {"type": "auto"}
 
             response = self._client.messages.create(
@@ -193,13 +199,17 @@ class HunterEngine:
 
             tool_results = []
             for block in other_blocks:
-                if block.name == "collect_evidence":
+                if block.name in ("collect_evidence", "request_evidence"):
                     collections_used += 1
-                    device_id = block.input["device_id"]
-                    request = block.input["request"]
-                    print(f"[{collections_used}/{self._max_collections}] collect_evidence({device_id}): {request}")
-
-                    evidence = self._collector.collect(device_id=device_id, request=request)
+                    if block.name == "request_evidence":
+                        description = block.input["description"]
+                        print(f"[{collections_used}/{self._max_collections}] request_evidence: {description}")
+                        evidence = self._dispatcher.dispatch(description)
+                    else:
+                        device_id = block.input["device_id"]
+                        request = block.input["request"]
+                        print(f"[{collections_used}/{self._max_collections}] collect_evidence({device_id}): {request}")
+                        evidence = self._collector.collect(device_id=device_id, request=request)
 
                     status = "found" if evidence.found else "not found"
                     note = f" — {evidence.note}" if evidence.note else ""
@@ -218,7 +228,7 @@ class HunterEngine:
                             "note": evidence.note,
                         }),
                     })
-                elif block.name == "record_conclusion":
+                elif block.name == "record_conclusion" and self._verifier_enabled:
                     conclusion_id = block.input["conclusion_id"]
                     statement = block.input["statement"]
                     reasoning = block.input["reasoning"]
@@ -259,6 +269,15 @@ class HunterEngine:
                         "type": "tool_result",
                         "tool_use_id": block.id,
                         "content": json.dumps(verdict),
+                    })
+
+                else:
+                    # Catch-all: tool not available in this mode — must still
+                    # return a tool_result or the API will see orphaned tool_use blocks.
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": json.dumps({"error": f"Tool '{block.name}' is not available in this mode."}),
                     })
 
             if report_block is not None:
@@ -357,7 +376,8 @@ class HunterEngine:
                     on_step(messages)
                 return HuntResult(report=final_report, transcript=messages)
 
-            messages.append({"role": "user", "content": tool_results})
+            if tool_results:
+                messages.append({"role": "user", "content": tool_results})
             if on_step:
                 on_step(messages)
 

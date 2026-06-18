@@ -1,0 +1,30 @@
+edge-rtr01#show interfaces
+GigabitEthernet0/0 is up, line protocol is up (connected)
+  Description: LAN-MGMT
+  Hardware is ISR4321-2x1GE, address is 00e1.6d2b.4a01 (bia 00e1.6d2b.4a01)
+  Internet address is 10.0.1.254/24
+  MTU 1500 bytes, BW 1000000 Kbit/sec, DLY 10 usec
+  5 minute input rate 234,000 bits/sec, 42 packets/sec
+  5 minute output rate 198,000 bits/sec, 38 packets/sec
+     1,284,032 packets input, 892,334,112 bytes, 0 no buffer
+     1,118,440 packets output, 734,218,880 bytes, 0 underruns
+
+GigabitEthernet0/1 is up, line protocol is up (connected)
+  Description: LAN-CORP
+  Hardware is ISR4321-2x1GE, address is 00e1.6d2b.4a02 (bia 00e1.6d2b.4a02)
+  Internet address is 10.0.2.254/24
+  MTU 1500 bytes, BW 1000000 Kbit/sec, DLY 10 usec
+  5 minute input rate 1,823,000 bits/sec, 312 packets/sec
+  5 minute output rate 1,654,000 bits/sec, 294 packets/sec
+     9,284,032 packets input, 7,892,334,112 bytes, 0 no buffer
+     8,918,440 packets output, 7,334,218,880 bytes, 0 underruns
+
+GigabitEthernet0/3 is up, line protocol is up (connected)
+  Description: WAN-UPLINK
+  Hardware is ISR4321-2x1GE, address is 00e1.6d2b.4a04 (bia 00e1.6d2b.4a04)
+  Internet address is 172.16.0.2/30
+  MTU 1500 bytes, BW 1000000 Kbit/sec, DLY 10 usec
+  5 minute input rate 2,341,000 bits/sec, 284 packets/sec
+  5 minute output rate 48,234,000 bits/sec, 4,201 packets/sec
+     98,332,021 packets input, 14,882,304,000 bytes, 0 no buffer
+     2,134,021,884 packets output, 892,334,112,000 bytes, 0 underruns

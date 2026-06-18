@@ -1,0 +1,6 @@
+edge-rtr01#show ip route static
+Codes: S - static
+
+S*    0.0.0.0/0 [1/0] via 172.16.0.1
+      185.0.0.0/32 is subnetted, 1 subnets
+S        185.211.34.90/32 [1/0] via 172.16.0.1

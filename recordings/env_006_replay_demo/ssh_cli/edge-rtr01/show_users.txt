@@ -1,0 +1,6 @@
+edge-rtr01#show users
+    Line       User       Host(s)              Idle       Location
+   0 con 0                idle                 00:00:01
+*  2 vty 0     admin      idle                 00:00:00   10.0.1.50
+
+  Interface    User               Mode         Idle     Peer Address

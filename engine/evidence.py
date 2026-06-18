@@ -54,3 +54,18 @@ COLLECT_EVIDENCE_TOOL = {
         "required": ["device_id", "request"],
     },
 }
+
+REQUEST_EVIDENCE_TOOL = {
+    "name": "request_evidence",
+    "description": "Describe, in your own investigative terms, what you want to observe or verify.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "description": {
+                "type": "string",
+                "description": "What you want to observe or verify, in your own investigative terms.",
+            },
+        },
+        "required": ["description"],
+    },
+}
