@@ -28,18 +28,23 @@ import anthropic
 
 from engine import parsers
 from engine.evidence import EvidenceResponse
+from engine.topology_model import TopologyModel
 
 RECORDINGS_DIR = Path(__file__).parent.parent / "recordings"
 SIZE_LIMIT = 8_000  # chars; truncate and signal the Hunter if exceeded
 
 # Maps tool name → trust tier label returned to the Hunter.
 TRUST_TIERS: dict[str, str] = {
-    "ssh_cli":       "ssh_cli",        # device self-reporting, medium trust
-    "snmp_get":      "snmp",           # device self-reporting, medium trust
-    "netflow_query": "netflow",        # off-device collector, higher trust
-    "oob_tap":       "off_device_tap", # independent vantage, highest trust
-    "host_edr":      "host_edr",       # local agent, lower trust
+    "ssh_cli":        "ssh_cli",        # device self-reporting, medium trust
+    "snmp_get":       "snmp",           # device self-reporting, medium trust
+    "netflow_query":  "netflow",        # off-device collector, higher trust
+    "oob_tap":        "off_device_tap", # independent vantage, highest trust
+    "host_edr":       "host_edr",       # local agent, lower trust
+    "topology_query": "scan_observed",  # model aggregate; items carry own _trust tags
 }
+
+# topology_query returns pre-normalized JSON — skip the Haiku parser step.
+_PREFORMATTED: frozenset[str] = frozenset({"topology_query"})
 
 # Ordered from highest trust (index 0) to lowest trust (last index).
 _TRUST_RANK = [
@@ -48,6 +53,26 @@ _TRUST_RANK = [
 ]
 
 COLLECTION_TOOLS = [
+    {
+        "name": "topology_query",
+        "description": (
+            "Query the network topology model: scan-observed host inventory "
+            "(from active scanning), device-reported routing tables, ARP entries, "
+            "and LLDP/CDP adjacencies, plus any cross-source discrepancies already "
+            "detected. Use when you need the network map, host inventory, routing "
+            "state, or to check for inconsistencies between sources."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "focus": {
+                    "type": "string",
+                    "description": "Optional: 'nodes', 'routes', 'discrepancies', or omit for full model.",
+                },
+            },
+            "required": [],
+        },
+    },
     {
         "name": "ssh_cli",
         "description": (
@@ -125,6 +150,7 @@ class Dispatcher:
         model: str = "claude-haiku-4-5-20251001",
         mode: str = "replay",
         credential_store: CredentialStore | None = None,
+        topology_model: TopologyModel | None = None,
     ) -> None:
         self._client = client
         self._topology = topology
@@ -133,14 +159,17 @@ class Dispatcher:
         self._recordings_dir = RECORDINGS_DIR / scenario
         self._sessions: dict[tuple[str, str], Any] = {}
         self._creds = credential_store or _NullCredentialStore()
+        self._topology_model = topology_model
 
         if mode == "replay":
             self._handlers: dict[str, Handler] = {
-                "ssh_cli": self._ssh_cli_replay,
+                "ssh_cli":        self._ssh_cli_replay,
+                "topology_query": self._topology_query,
             }
         elif mode == "live":
             self._handlers = {
-                "ssh_cli": self._ssh_cli_live,
+                "ssh_cli":        self._ssh_cli_live,
+                "topology_query": self._topology_query,
             }
         else:
             raise ValueError(f"Unknown dispatcher mode: {mode!r}")
@@ -164,7 +193,7 @@ class Dispatcher:
 
         for tool_name, inputs in tool_calls:
             found, raw = self._run_tool(tool_name, inputs)
-            target = inputs.get("target", "?")
+            target = inputs.get("target", "topology_model" if tool_name == "topology_query" else "?")
             query  = inputs.get("command") or inputs.get("oid") or inputs.get("filter", "")
             tier   = TRUST_TIERS.get(tool_name, "unknown")
 
@@ -174,11 +203,19 @@ class Dispatcher:
 
             any_found = True
             tiers.append(tier)
-            parsed = parsers.parse(raw, tool_name, query, self._client, self._model)
-            parts.append(
-                f"[source={target} | protocol={tool_name} | query={query!r} | trust={tier}]\n"
-                + json.dumps(parsed, indent=2)
-            )
+
+            if tool_name in _PREFORMATTED:
+                # Already normalized — pass through without an extra Haiku parse.
+                parts.append(
+                    f"[source=topology_model | protocol=topology_query | trust={tier}]\n"
+                    + raw
+                )
+            else:
+                parsed = parsers.parse(raw, tool_name, query, self._client, self._model)
+                parts.append(
+                    f"[source={target} | protocol={tool_name} | query={query!r} | trust={tier}]\n"
+                    + json.dumps(parsed, indent=2)
+                )
 
         note = f"trust_tier={_min_trust(tiers)}" if tiers else "no data returned"
         return EvidenceResponse(found=any_found, data="\n\n".join(parts), note=note)
@@ -227,10 +264,46 @@ class Dispatcher:
             return False, f"'{name}' not available in {self._mode!r} mode."
         return handler(inputs)
 
+    # -- Topology model handler (mode-agnostic) ------------------------
+
+    def _topology_query(self, inputs: dict) -> tuple[bool, str]:
+        if self._topology_model is None:
+            return False, "No topology model loaded for this scenario."
+        snapshot = self._topology_model.snapshot()
+        discs    = self._topology_model.discrepancies()
+        not_int  = self._topology_model.not_interrogable_nodes()
+        focus    = inputs.get("focus", "all")
+
+        result: dict[str, Any] = {
+            "trust_note": (
+                "nodes: source=SCAN_OBSERVED trust=scan_observed "
+                "(active probe; ARP presence is the most reliable sub-case). "
+                "routes/arp/neighbors: source=DEVICE_REPORTED trust=ssh_cli "
+                "(device self-reporting; a compromised device can lie about its own state). "
+                "Discrepancies across these mid-trust sources are suspicious but NOT decisive: "
+                "stale record, misconfiguration, and real intrusion are indistinguishable "
+                "without an independent off-device tap."
+            ),
+        }
+        if focus in ("all", "nodes"):
+            result["nodes"] = snapshot["nodes"]
+        if focus in ("all", "routes"):
+            result["routes"]      = snapshot["routes"]
+            result["arp_entries"] = snapshot["arp_entries"]
+            result["neighbors"]   = snapshot["neighbors"]
+        if focus in ("all", "discrepancies"):
+            result["discrepancies"] = discs
+            if not_int:
+                result["not_interrogable"] = not_int
+
+        return True, json.dumps(result, indent=2)
+
     # -- Replay handlers -----------------------------------------------
 
     def _ssh_cli_replay(self, inputs: dict) -> tuple[bool, str]:
-        target  = inputs["target"]
+        target  = inputs.get("target", "")
+        if not target:
+            return False, "ssh_cli requires a target device ID."
         command = inputs.get("command") or inputs.get("cmd") or inputs.get("query", "")
         if not command:
             return False, "ssh_cli requires a command."
@@ -246,7 +319,9 @@ class Dispatcher:
     # -- Live handlers -------------------------------------------------
 
     def _ssh_cli_live(self, inputs: dict) -> tuple[bool, str]:
-        target  = inputs["target"]
+        target  = inputs.get("target", "")
+        if not target:
+            return False, "ssh_cli requires a target device ID."
         command = inputs.get("command") or inputs.get("cmd") or inputs.get("query", "")
         if not command:
             return False, "ssh_cli requires a command."

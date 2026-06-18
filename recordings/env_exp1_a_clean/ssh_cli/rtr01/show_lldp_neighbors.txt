@@ -1,0 +1,8 @@
+rtr01#show lldp neighbors
+Capability codes:
+    (R) Router, (B) Bridge, (T) Telephone
+
+Device ID    Local Intf     Hold-time  Capability   Port ID
+sw01         Gi0/0          120         B             Gi0/1
+
+Total entries displayed: 1

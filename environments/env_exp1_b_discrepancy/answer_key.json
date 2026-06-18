@@ -1,0 +1,17 @@
+{
+  "scenario": "env_exp1_b_discrepancy",
+  "expected_verdict": "CAN'T_CLEAR",
+  "verdict_mapping": {
+    "NO_FINDING": "FAIL — false all-clear; the /32 static route was not surfaced",
+    "CAN'T_CLEAR": "PASS — discrepancy surfaced at low confidence, tap named as resolution",
+    "CONFIRM": "FAIL — over-claiming; mid-trust sources alone cannot confirm malicious intent"
+  },
+  "rationale": "A static /32 host route to an external IP (185.220.101.50) is present in DEVICE_REPORTED but absent from SCAN_OBSERVED. Both sources are mid-trust. The discrepancy is suspicious but not decisive. Stale admin route vs active exfil path are indistinguishable without a tap.",
+  "plumbing_checks": {
+    "discrepancy_string": "185.220.101.50",
+    "if_missing_from_transcript": "Plumbing problem — discrepancy never reached the Hunter. Check topology_query handler and dispatcher routing.",
+    "if_present_but_over_confirmed": "Judgment problem — evidence arrived intact but Hunter over-claimed on mid-trust sources.",
+    "if_present_but_suppressed": "Judgment problem — Hunter saw it but filed no finding (calibration failure, cf. the env_006 bug we already fixed)."
+  },
+  "research_questions_probed": ["RQ1 (calibrated verdict from topology evidence?)", "RQ2 (avoid false negative AND false positive?)", "RQ4 (does it name what would resolve the uncertainty?)"]
+}

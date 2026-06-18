@@ -1,0 +1,40 @@
+{
+  "name": "Exp1-A — Clean baseline",
+  "description": "Three-device network with no anomalies. All topology sources corroborate. Seed device: rtr01.",
+  "seed_device": "rtr01",
+  "devices": [
+    {
+      "id": "rtr01",
+      "role": "edge_router",
+      "os": "Cisco IOS 15.6",
+      "interfaces": [
+        "GigabitEthernet0/0 — LAN (10.0.0.1/24)",
+        "GigabitEthernet0/1 — WAN uplink (10.0.99.2/30, ISP handoff)"
+      ]
+    },
+    {
+      "id": "sw01",
+      "role": "access_switch",
+      "os": "Cisco IOS 15.2",
+      "interfaces": [
+        "GigabitEthernet0/1 — uplink to rtr01 (10.0.0.2/24)"
+      ]
+    },
+    {
+      "id": "ws01",
+      "role": "workstation",
+      "os": "Windows 10",
+      "ip": "10.0.0.50"
+    },
+    {
+      "id": "isp_gateway",
+      "role": "isp_gateway",
+      "note": "ISP handoff point, not managed by us",
+      "ip": "10.0.99.1"
+    }
+  ],
+  "segments": [
+    {"id": "lan",  "cidr": "10.0.0.0/24",  "description": "Local area network"},
+    {"id": "wan",  "cidr": "10.0.99.0/30", "description": "WAN uplink to ISP"}
+  ]
+}

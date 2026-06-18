@@ -1,0 +1,10 @@
+rtr01#show ip route
+Codes: C - connected, S - static, * - candidate default
+
+Gateway of last resort is 10.0.99.1 to network 0.0.0.0
+
+S*    0.0.0.0/0 [1/0] via 10.0.99.1
+      10.0.0.0/24 is directly connected, GigabitEthernet0/0
+      10.0.99.0/30 is directly connected, GigabitEthernet0/1
+      185.0.0.0/32 is subnetted, 1 subnets
+S        185.220.101.50/32 [1/0] via 10.0.99.1

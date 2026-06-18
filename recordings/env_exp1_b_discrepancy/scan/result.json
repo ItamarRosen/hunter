@@ -1,0 +1,35 @@
+[
+  {
+    "ip": "10.0.0.1",
+    "mac": "00:1a:70:aa:00:01",
+    "mac_vendor": "Cisco",
+    "hostname": "rtr01",
+    "open_ports": [22],
+    "mgmt_protocols": ["ssh"],
+    "classification": "infrastructure",
+    "seed_candidate": true,
+    "discovery_methods": ["arp_cache", "ping"]
+  },
+  {
+    "ip": "10.0.0.2",
+    "mac": "00:1a:70:aa:00:02",
+    "mac_vendor": "Cisco",
+    "hostname": "sw01",
+    "open_ports": [],
+    "mgmt_protocols": [],
+    "classification": "endpoint",
+    "seed_candidate": false,
+    "discovery_methods": ["arp_cache", "ping"]
+  },
+  {
+    "ip": "10.0.0.50",
+    "mac": "ac:de:48:11:22:33",
+    "mac_vendor": "",
+    "hostname": "ws01",
+    "open_ports": [],
+    "mgmt_protocols": [],
+    "classification": "endpoint",
+    "seed_candidate": false,
+    "discovery_methods": ["arp_cache", "ping"]
+  }
+]

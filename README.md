@@ -1,504 +1,263 @@
-# Gitleaks
+# Hunter
 
-```
-┌─○───┐
-│ │╲  │
-│ │ ○ │
-│ ○ ░ │
-└─░───┘
-```
+Hunter is a research harness for evaluating **autonomous threat-hunting
+agents**: given nothing but a network's topology and a neutral task ("Determine
+whether this network is compromised, and if so how. Begin."), can an LLM-driven
+investigator ask the right questions, find the decisive evidence, reach the
+correct verdict, and *not* invent things it can't actually support?
 
-[license]: ./LICENSE
-[badge-license]: https://img.shields.io/github/license/gitleaks/gitleaks.svg
-[go-docs-badge]: https://pkg.go.dev/badge/github.com/gitleaks/gitleaks/v8?status
-[go-docs]: https://pkg.go.dev/github.com/zricethezav/gitleaks/v8
-[badge-build]: https://github.com/gitleaks/gitleaks/actions/workflows/test.yml/badge.svg
-[build]: https://github.com/gitleaks/gitleaks/actions/workflows/test.yml
-[go-report-card-badge]: https://goreportcard.com/badge/github.com/gitleaks/gitleaks/v8
-[go-report-card]: https://goreportcard.com/report/github.com/gitleaks/gitleaks/v8
-[dockerhub]: https://hub.docker.com/r/zricethezav/gitleaks
-[dockerhub-badge]: https://img.shields.io/docker/pulls/zricethezav/gitleaks.svg
-[gitleaks-action]: https://github.com/gitleaks/gitleaks-action
-[gitleaks-badge]: https://img.shields.io/badge/protected%20by-gitleaks-blue
-[gitleaks-playground-badge]: https://img.shields.io/badge/gitleaks%20-playground-blue
-[gitleaks-playground]: https://gitleaks.io/playground
+Each experiment pits a **Hunter** (the agent under test) against an
+**Environment** — a network topology plus a hidden ground truth describing
+what's really going on (an incident, decoys, competing narratives, or nothing
+at all) — and scores the resulting investigation against a rubric.
 
+## How a hunt works
 
-[![Github Action Test][badge-build]][build]
-[![Docker Hub][dockerhub-badge]][dockerhub]
-[![Gitleaks Playground][gitleaks-playground-badge]][gitleaks-playground]
-[![Gitleaks Action][gitleaks-badge]][gitleaks-action]
-[![GoDoc][go-docs-badge]][go-docs]
-[![GoReportCard][go-report-card-badge]][go-report-card]
-[![License][badge-license]][license]
+Hunter runs in two modes: **collector mode** (env_000–005, legacy) and
+**dispatcher mode** (env_006+, current research path).
 
+### Dispatcher mode
 
-### Join our Discord! [![Discord](https://img.shields.io/discord/1102689410522284044.svg?label=&logo=discord&logoColor=ffffff&color=7389D8&labelColor=6A7EC2)](https://discord.gg/8Hzbrnkr7E)
+1. **The Hunter** (`engine/hunter.py`) is given a network topology and a task
+   framing. It investigates by repeatedly calling `request_evidence(description)`
+   — phrasing requests in its own investigative terms — and ends by calling
+   `submit_report(...)` with findings, confidence/severity, and open questions.
+   The Hunter never sees a menu of collection capabilities, protocol names,
+   vendor names, or data-source names. This is a hard invariant: leaking that
+   information would corrupt the reasoning the project exists to test.
 
-Gitleaks is a tool for **detecting** secrets like passwords, API keys, and tokens in git repos, files, and whatever else you wanna throw at it via `stdin`.
+2. **The Dispatcher** (`engine/dispatcher.py`) sits between the Hunter and the
+   network. It receives the Hunter's free-form request and uses a cheap routing
+   model (Haiku, temperature 0) to select which collection tool(s) to invoke.
+   All protocol knowledge lives here, hidden from the Hunter. Each response is
+   tagged with a `trust_tier`:
+   - `off_device_tap` — independent vantage; highest trust
+   - `ssh_cli` / `snmp` — device self-reporting; medium trust
+   - `scan_observed` — passive/active probe of externally-visible behavior
+   - `host_edr` / `host_agent` — local agent; lower trust
 
-```
-➜  ~/code(master) gitleaks git -v
+   The Dispatcher runs in **replay** mode (reads from pre-captured recordings)
+   or **live** mode (queries real infrastructure via SSH).
 
-    ○
-    │╲
-    │ ○
-    ○ ░
-    ░    gitleaks
+3. **The TopologyModel** (`engine/topology_model.py`) is a trust-tiered live
+   map of the network, populated from multiple sources before the hunt begins:
+   - Stage 1 scan: credential-free ARP sweep + ping + TCP port probe
+     (`engine/collectors/scan.py`) → `SCAN_OBSERVED` evidence
+   - Credentialed crawl: BFS from a seed device via LLDP/CDP neighbor tables
+     (`engine/collectors/discovery.py`) → `DEVICE_REPORTED` evidence
+   The Dispatcher exposes the model to the Hunter via a `topology_query` tool
+   that returns the current snapshot (nodes, routes, ARP, neighbors) plus any
+   cross-source discrepancies already detected. Devices seen in LLDP/CDP but
+   not interrogable are marked `NOT_INTERROGABLE` — known coverage gaps, never
+   treated as clean.
 
+4. **Parsers** (`engine/parsers/`) normalize raw protocol output (routing
+   tables, ARP caches, neighbor tables) into structured JSON the Hunter can
+   reason over directly. A Haiku model handles normalization; adding a new
+   protocol requires only a new parser file and a registry entry.
 
-Finding:     "export BUNDLE_ENTERPRISE__CONTRIBSYS__COM=cafebabe:deadbeef",
-Secret:      cafebabe:deadbeef
-RuleID:      sidekiq-secret
-Entropy:     2.609850
-File:        cmd/generate/config/rules/sidekiq.go
-Line:        23
-Commit:      cd5226711335c68be1e720b318b7bc3135a30eb2
-Author:      John
-Email:       john@users.noreply.github.com
-Date:        2022-08-03T12:31:40Z
-Fingerprint: cd5226711335c68be1e720b318b7bc3135a30eb2:cmd/generate/config/rules/sidekiq.go:sidekiq-secret:23
-```
+5. **Verification** (`engine/verifier.py` + `engine/report_gate.py`) checks
+   the Hunter's reasoning against the evidence it actually collected, twice:
+   - **`record_conclusion`** — when the Hunter records a working conclusion
+     mid-investigation, a fresh-context verifier generates the strongest
+     plausible competing explanation and judges whether the evidence
+     *discriminates* between them, returning `SUPPORTED` /
+     `NON_DIAGNOSTIC` / `CONTRADICTED`, a `reachable` flag (is the
+     discriminating evidence even collectible here?), and a
+     `binding_directive` the Hunter must act on.
+   - **The terminal report gate** — at `submit_report`, every finding (not
+     just ones the Hunter explicitly recorded a conclusion on) is
+     independently re-reviewed the same way. Findings that don't hold up are
+     force-resolved to an open `coverage_gap` — never rewritten into a false
+     "clean"/"no compromise" — and claims that assert more than the evidence
+     *type* supports (e.g. inferring exfiltrated *data content* from
+     flow/volume evidence alone) are mechanically bounded via `scope_flags`,
+     with the unsupported remainder moved to `open_questions`.
 
-## Getting Started
+   `submit_report` is rejected — and the Hunter must revise — until every
+   conclusion/finding is `SUPPORTED` or has been honestly hedged as an
+   unreachable coverage gap, bounded by a gate-rejection limit so the loop
+   always terminates.
 
-Gitleaks can be installed using Homebrew, Docker, or Go. Gitleaks is also available in binary form for many popular platforms and OS types on the [releases page](https://github.com/gitleaks/gitleaks/releases). In addition, Gitleaks can be implemented as a pre-commit hook directly in your repo or as a GitHub action using [Gitleaks-Action](https://github.com/gitleaks/gitleaks-action).
+### Collector mode (legacy, env_000–005)
 
-### Installing
+The Hunter calls `collect_evidence(device_id, request)` directly; an
+`EvidenceCollector` answers. Two implementations:
+- **`GenerativeEvidenceCollector`** — an LLM "Matcher" improvises plausible
+  evidence on the fly, weaving in ground-truth details where a real system
+  would surface them.
+- **`FixtureEvidenceCollector`** — a closed, deterministic, retrieval-only
+  evidence set. An LLM router only *classifies* which canned record(s) a
+  request asks about; the actual text is fixed in advance. No model ever
+  authors evidence content.
+
+**Scoring** (`engine/scoring.py`) replays `report.json`, `transcript.json`,
+and `collection_log.json` against the environment's `rubric.json`. For each
+rubric item it derives one of:
+- `not_encountered` — never surfaced.
+- `resolved_with_evidence` — surfaced, decisive evidence requested and cited,
+  correct label.
+- `unconfirmed_guess` — correct label reached without ever citing the decisive
+  evidence (right answer, surface cues only).
+- `handled_implicitly_unstated` — not named directly, but a stated general
+  criterion correctly resolves it.
+- `unresolved` — surfaced but mislabeled or unaddressed.
+
+## Environments
+
+Each `environments/<name>/` directory contains:
+
+- `topology.json` — the network the Hunter sees: devices, segments, roles.
+  Written to be strictly neutral — no hints about where an incident is or
+  whether one exists at all.
+- `ground_truth.md` — the real story (incident timeline, decisive-evidence
+  tags, decoys/competing narratives, benign baselines). Never shown to the
+  Hunter.
+- `rubric.json` — scoreable items with `encounter_tags` / `decisive_evidence_tags`
+  and the correct label for each.
+- `answer_key.json` (dispatcher experiments) — expected verdict, failure-mode
+  labels per verdict direction, plumbing checks, and research questions probed.
+
+### Experiment catalog
+
+| Environment | Mode | What it's testing |
+|---|---|---|
+| `env_000_dummy` | collector | Minimal smoke test of the Hunter loop end-to-end. |
+| `env_001_noisy` | collector | A real incident buried in routine network noise. |
+| `env_002_competing_narratives` | collector | Incident plus a second unrelated suspicious-looking activity stream — does the Hunter conflate them? |
+| `env_003_wrong_story` | collector | Same network, louder "competing" EDR alert and decoys designed to lead toward a plausible-but-wrong conclusion. First environment with `coverage.json`/passive-detection comparison. |
+| `env_004_cloud_identity_lotl` | collector | Hybrid-identity living-off-the-land intrusion (Storm-0558/Midnight Blizzard-style OAuth abuse), the *quietest* signal in the environment, competing against a zero-success password spray and an authorized pentest. Includes a `_control` variant with the incident removed. |
+| `env_005_favorable_*` / `env_005_hostile_*` | collector | 2×2 (favorable vs. hostile instrumentation × compromised vs. clean) around a single edge-router intrusion. Tests whether the Hunter's conclusion changes based on evidence quality, and whether clean cells stay clean. Uses `FixtureEvidenceCollector`. |
+| `env_005_hostile_compromised_notap` | collector | Ablation: identical incident but the one out-of-band tap that makes it resolvable doesn't exist. Self-check that the Hunter holds the suspicion as a coverage gap rather than producing a false all-clear or phantom escalation. |
+| `env_006_replay_demo` | dispatcher | Dispatcher-mode smoke test. Recordings from a simple edge-router network; verifies the Hunter → Dispatcher → Parser pipeline end-to-end. |
+| `env_exp1_a_clean` | dispatcher | **Experiment 1A** — clean three-device LAN with no anomalies. Expected verdict: `NO_FINDING`. Tests false-positive rate over the full scan → crawl → hunt pipeline. |
+| `env_exp1_b_discrepancy` | dispatcher | **Experiment 1B** — same topology plus a static /32 host route to a known Tor exit node (185.220.101.50) present in `DEVICE_REPORTED` but absent from `SCAN_OBSERVED`. Expected verdict: `CAN'T_CLEAR` — the discrepancy is suspicious but indistinguishable from an admin error without an independent tap. Tests that the Hunter surfaces the anomaly at low confidence without over-claiming. |
+
+`CHANGES.md` has the detailed, chronological design rationale for each
+environment and every fix made in response to a run's results.
+
+## Network discovery pipeline
+
+The dispatcher-mode experiments use a two-stage discovery pipeline to populate
+the TopologyModel before the hunt begins.
+
+**Stage 1 — credential-free scan** (`run_scan.py`):
+Auto-detects the local subnet and runs an ARP sweep + concurrent ping + TCP
+port scan on management ports, classifying hosts as infrastructure or endpoint
+by OUI and open-port signature. No credentials required; uses Python stdlib +
+macOS built-ins only.
+
+**Stage 2 — credentialed crawl** (`run_discovery.py`):
+BFS from a seed device, interrogating each hop via SSH (`show ip route`,
+`show ip arp`, `show lldp neighbors`, `show cdp neighbors`) and expanding via
+neighbor tables. Runs in replay mode (reads pre-captured recordings) or live
+mode (Netmiko SSH). Writes recordings from live runs so they can be replayed
+later. Devices seen in neighbor tables but not interrogable are marked
+`NOT_INTERROGABLE`.
+
+## Running things
+
+Setup:
 
 ```bash
-# MacOS
-brew install gitleaks
-
-# Docker (DockerHub)
-docker pull zricethezav/gitleaks:latest
-docker run -v ${path_to_host_folder_to_scan}:/path zricethezav/gitleaks:latest [COMMAND] [OPTIONS] [SOURCE_PATH]
-
-# Docker (ghcr.io)
-docker pull ghcr.io/gitleaks/gitleaks:latest
-docker run -v ${path_to_host_folder_to_scan}:/path ghcr.io/gitleaks/gitleaks:latest [COMMAND] [OPTIONS] [SOURCE_PATH]
-
-# From Source (make sure `go` is installed)
-git clone https://github.com/gitleaks/gitleaks.git
-cd gitleaks
-make build
+poetry install
+echo "ANTHROPIC_API_KEY=sk-..." > .env
 ```
 
-### GitHub Action
+**Dispatcher mode (current):**
 
-Check out the official [Gitleaks GitHub Action](https://github.com/gitleaks/gitleaks-action)
+```bash
+# Single hunt in replay mode
+python run_dispatch.py <scenario>
+python run_dispatch.py env_006_replay_demo --no-verifier
 
-```
-name: gitleaks
-on: [pull_request, push, workflow_dispatch]
-jobs:
-  scan:
-    name: gitleaks
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE}} # Only required for Organizations, not personal accounts.
+# Experiment 1: 5 seeds × 2 scenarios (CLEAN vs DISCREPANCY)
+python run_experiment1.py [--scenarios a,b] [--seeds N]
+
+# Stage 1: credential-free LAN scan
+python run_scan.py
+
+# Stage 2: credentialed crawl from seed device (replay or live)
+python run_discovery.py <scenario> [--seed <device_id>]
 ```
 
-### Pre-Commit
+**Collector mode (env_000–005):**
 
-1. Install pre-commit from https://pre-commit.com/#install
-2. Create a `.pre-commit-config.yaml` file at the root of your repository with the following content:
+```bash
+# Run a single hunt and score it
+python run_hunt.py <environment_name>
+python score_hunt.py <environment_name> <run_dir_name>
 
-   ```
-   repos:
-     - repo: https://github.com/gitleaks/gitleaks
-       rev: v8.24.2
-       hooks:
-         - id: gitleaks
-   ```
+# Three-arm experiment (passive detection vs. Hunter+Monitor vs. control)
+python run_experiment.py [--force-regenerate-telemetry]
 
-   for a [native execution of GitLeaks](https://github.com/gitleaks/gitleaks/releases) or use the [`gitleaks-docker` pre-commit ID](https://github.com/gitleaks/gitleaks/blob/master/.pre-commit-hooks.yaml) for executing GitLeaks using the [official Docker images](#docker)
+# env_005 favorable/hostile 2x2 (fixture-based)
+python run_experiment_005.py [--seeds N] [--cells GROUP] [--no-verifier]
 
-3. Auto-update the config to the latest repos' versions by executing `pre-commit autoupdate`
-4. Install with `pre-commit install`
-5. Now you're all set!
-
-```
-➜ git commit -m "this commit contains a secret"
-Detect hardcoded secrets.................................................Failed
+# Generate a telemetry chunk for the passive-detection arm
+python generate_telemetry.py <environment_name> <feed|control>
 ```
 
-Note: to disable the gitleaks pre-commit hook you can prepend `SKIP=gitleaks` to the commit command
-and it will skip running gitleaks
+**Tests:**
 
-```
-➜ SKIP=gitleaks git commit -m "skip gitleaks check"
-Detect hardcoded secrets................................................Skipped
+```bash
+.venv/bin/python tests/test_report_gate.py
 ```
 
-## Usage
+All runs write their artifacts (transcript, collection log, report, and when
+the verifier is enabled, `verifier_log.json`) to
+`runs/<environment_name>_<timestamp>/` or `runs/experiment1/<scenario>/seed_NN/`.
+
+## Repo layout
 
 ```
-Usage:
-  gitleaks [command]
-
-Available Commands:
-  completion  generate the autocompletion script for the specified shell
-  dir         scan directories or files for secrets
-  git         scan git repositories for secrets
-  help        Help about any command
-  stdin       detect secrets from stdin
-  version     display gitleaks version
-
-Flags:
-  -b, --baseline-path string          path to baseline with issues that can be ignored
-  -c, --config string                 config file path
-                                      order of precedence:
-                                      1. --config/-c
-                                      2. env var GITLEAKS_CONFIG
-                                      3. env var GITLEAKS_CONFIG_TOML with the file content
-                                      4. (target path)/.gitleaks.toml
-                                      If none of the four options are used, then gitleaks will use the default config
-      --enable-rule strings           only enable specific rules by id
-      --exit-code int                 exit code when leaks have been encountered (default 1)
-  -i, --gitleaks-ignore-path string   path to .gitleaksignore file or folder containing one (default ".")
-  -h, --help                          help for gitleaks
-      --ignore-gitleaks-allow         ignore gitleaks:allow comments
-  -l, --log-level string              log level (trace, debug, info, warn, error, fatal) (default "info")
-      --max-decode-depth int          allow recursive decoding up to this depth (default "0", no decoding is done)
-      --max-target-megabytes int      files larger than this will be skipped
-      --no-banner                     suppress banner
-      --no-color                      turn off color for verbose output
-      --redact uint[=100]             redact secrets from logs and stdout. To redact only parts of the secret just apply a percent value from 0..100. For example --redact=20 (default 100%)
-  -f, --report-format string          output format (json, csv, junit, sarif) (default "json")
-  -r, --report-path string            report file
-      --report-template string        template file used to generate the report (implies --report-format=template)
-  -v, --verbose                       show verbose output from scan
-      --version                       version for gitleaks
-
-Use "gitleaks [command] --help" for more information about a command.
+engine/
+  hunter.py          Hunter agent loop (request_evidence / submit_report)
+  dispatcher.py      Intent → collection routing; hides all protocol knowledge
+                      from the Hunter
+  evidence.py        EvidenceCollector protocol, shared types
+  topology_model.py  Trust-tiered live map: SCAN_OBSERVED + DEVICE_REPORTED;
+                      snapshot(), discrepancies(), not_interrogable_nodes()
+  verifier.py        Competing-hypothesis verifier (record_conclusion review)
+  report_gate.py     Terminal report gate: per-finding re-review + scope_flags
+                      at submit_report, with bounded forced resolution
+  collectors/
+    generative.py    LLM "Matcher" evidence collector (collector mode)
+    fixtures.py      Deterministic fixture evidence collector (env_005)
+    discovery.py     Credentialed BFS crawl: TopologyCrawl (replay + live)
+    scan.py          Stage 1 credential-free scanner (ARP/ping/TCP port probe)
+  parsers/
+    __init__.py      Parser registry
+    routing.py       Cisco IOS routing table normalizer
+  detection.py       Passive single-pass detector (no collect_evidence)
+  telemetry.py       Telemetry chunk generation for the detection arm
+  rules.py           Cheap regex IoC rule-matcher (fairness-gate check)
+  scoring.py         Rubric grading + confabulation graders
+  coverage.py        FEED/ON-DEMAND tag bookkeeping
+  environment.py     Loads topology.json + ground_truth.md
+  runner.py          Shared run-artifact writing
+  render.py          Investigation-log rendering
+  prompts/           All system prompts (Hunter, Dispatcher, Matcher, verifier,
+                      graders, router)
+environments/        One directory per environment (topology, ground truth,
+                      rubric, answer key, ...)
+recordings/          Pre-captured device responses for replay mode, organized
+                      as recordings/<scenario>/ssh_cli/<device>/<command>.txt
+                      and recordings/<scenario>/scan/result.json
+runs/                Timestamped output of every hunt/experiment/scoring run
+tests/               Plain-assert test scripts (no pytest)
+run_hunt.py          Collector-mode entry point (env_000–005)
+run_dispatch.py      Dispatcher-mode entry point (single hunt)
+run_scan.py          Stage 1: credential-free LAN scan
+run_discovery.py     Stage 2: credentialed BFS crawl
+run_experiment.py    Three-arm experiment (env_003/004)
+run_experiment_005.py  env_005 2×2 experiment
+run_experiment1.py   Experiment 1: dispatcher-mode hunt over scanned topology
+score_hunt.py        Post-hoc rubric scoring
+generate_telemetry.py  Telemetry chunk generation
+CHANGES.md           Chronological log of environment design fixes and why
 ```
 
-### Commands
+## License
 
-⚠️ v8.19.0 introduced a change that deprecated `detect` and `protect`. Those commands are still available but
-are hidden in the `--help` menu. Take a look at this [gist](https://gist.github.com/zricethezav/b325bb93ebf41b9c0b0507acf12810d2) for easy command translations.
-If you find v8.19.0 broke an existing command (`detect`/`protect`), please open an issue.
-
-There are three scanning modes: `git`, `dir`, and `stdin`.
-
-#### Git
-The `git` command lets you scan local git repos. Under the hood, gitleaks uses the `git log -p` command to scan patches.
-You can configure the behavior of `git log -p` with the `log-opts` option.
-For example, if you wanted to run gitleaks on a range of commits you could use the following
-command: `gitleaks git -v --log-opts="--all commitA..commitB" path_to_repo`. See the [git log](https://git-scm.com/docs/git-log) documentation for more information.
-If there is no target specified as a positional argument, then gitleaks will attempt to scan the current working directory as a git repo.
-
-#### Dir
-The `dir` (aliases include `files`, `directory`) command lets you scan directories and files. Example: `gitleaks dir -v path_to_directory_or_file`.
-If there is no target specified as a positional argument, then gitleaks will scan the current working directory.
-
-#### Stdin
-You can also stream data to gitleaks with the `stdin` command. Example: `cat some_file | gitleaks -v stdin`
-
-### Creating a baseline
-
-When scanning large repositories or repositories with a long history, it can be convenient to use a baseline. When using a baseline,
-gitleaks will ignore any old findings that are present in the baseline. A baseline can be any gitleaks report. To create a gitleaks report, run gitleaks with the `--report-path` parameter.
-
-```
-gitleaks git --report-path gitleaks-report.json # This will save the report in a file called gitleaks-report.json
-```
-
-Once as baseline is created it can be applied when running the detect command again:
-
-```
-gitleaks git --baseline-path gitleaks-report.json --report-path findings.json
-```
-
-After running the detect command with the --baseline-path parameter, report output (findings.json) will only contain new issues.
-
-## Pre-Commit hook
-
-You can run Gitleaks as a pre-commit hook by copying the example `pre-commit.py` script into
-your `.git/hooks/` directory.
-
-## Load Configuration
-
-The order of precedence is:
-
-1. `--config/-c` option:
-      ```bash
-      gitleaks git --config /home/dev/customgitleaks.toml .
-      ```
-2. Environment variable `GITLEAKS_CONFIG` with the file path:
-      ```bash
-      export GITLEAKS_CONFIG="/home/dev/customgitleaks.toml"
-      gitleaks git .
-      ```
-3. Environment variable `GITLEAKS_CONFIG_TOML` with the file content:
-      ```bash
-      export GITLEAKS_CONFIG_TOML=`cat customgitleaks.toml`
-      gitleaks git .
-      ```
-4. A `.gitleaks.toml` file within the target path:
-      ```bash
-      gitleaks git .
-      ```
-
-If none of the four options are used, then gitleaks will use the default config.
-
-## Configuration
-
-Gitleaks offers a configuration format you can follow to write your own secret detection rules:
-
-```toml
-# Title for the gitleaks configuration file.
-title = "Custom Gitleaks configuration"
-
-# You have basically two options for your custom configuration:
-#
-# 1. define your own configuration, default rules do not apply
-#
-#    use e.g., the default configuration as starting point:
-#    https://github.com/gitleaks/gitleaks/blob/master/config/gitleaks.toml
-#
-# 2. extend a configuration, the rules are overwritten or extended
-#
-#    When you extend a configuration the extended rules take precedence over the
-#    default rules. I.e., if there are duplicate rules in both the extended
-#    configuration and the default configuration the extended rules or
-#    attributes of them will override the default rules.
-#    Another thing to know with extending configurations is you can chain
-#    together multiple configuration files to a depth of 2. Allowlist arrays are
-#    appended and can contain duplicates.
-
-# useDefault and path can NOT be used at the same time. Choose one.
-[extend]
-# useDefault will extend the default gitleaks config built in to the binary
-# the latest version is located at:
-# https://github.com/gitleaks/gitleaks/blob/master/config/gitleaks.toml
-useDefault = true
-# or you can provide a path to a configuration to extend from.
-# The path is relative to where gitleaks was invoked,
-# not the location of the base config.
-# path = "common_config.toml"
-# If there are any rules you don't want to inherit, they can be specified here.
-disabledRules = [ "generic-api-key"]
-
-# An array of tables that contain information that define instructions
-# on how to detect secrets
-[[rules]]
-
-# Unique identifier for this rule
-id = "awesome-rule-1"
-
-# Short human readable description of the rule.
-description = "awesome rule 1"
-
-# Golang regular expression used to detect secrets. Note Golang's regex engine
-# does not support lookaheads.
-regex = '''one-go-style-regex-for-this-rule'''
-
-# Int used to extract secret from regex match and used as the group that will have
-# its entropy checked if `entropy` is set.
-secretGroup = 3
-
-# Float representing the minimum shannon entropy a regex group must have to be considered a secret.
-entropy = 3.5
-
-# Golang regular expression used to match paths. This can be used as a standalone rule or it can be used
-# in conjunction with a valid `regex` entry.
-path = '''a-file-path-regex'''
-
-# Keywords are used for pre-regex check filtering. Rules that contain
-# keywords will perform a quick string compare check to make sure the
-# keyword(s) are in the content being scanned. Ideally these values should
-# either be part of the identiifer or unique strings specific to the rule's regex
-# (introduced in v8.6.0)
-keywords = [
-  "auth",
-  "password",
-  "token",
-]
-
-# Array of strings used for metadata and reporting purposes.
-tags = ["tag","another tag"]
-
-    # ⚠️ In v8.21.0 `[rules.allowlist]` was replaced with `[[rules.allowlists]]`.
-    # This change was backwards-compatible: instances of `[rules.allowlist]` still  work.
-    #
-    # You can define multiple allowlists for a rule to reduce false positives.
-    # A finding will be ignored if _ANY_ `[[rules.allowlists]]` matches.
-    [[rules.allowlists]]
-    description = "ignore commit A"
-    # When multiple criteria are defined the default condition is "OR".
-    # e.g., this can match on |commits| OR |paths| OR |stopwords|.
-    condition = "OR"
-    commits = [ "commit-A", "commit-B"]
-    paths = [
-      '''go\.mod''',
-      '''go\.sum'''
-    ]
-    # note: stopwords targets the extracted secret, not the entire regex match
-    # like 'regexes' does. (stopwords introduced in 8.8.0)
-    stopwords = [
-      '''client''',
-      '''endpoint''',
-    ]
-
-    [[rules.allowlists]]
-    # The "AND" condition can be used to make sure all criteria match.
-    # e.g., this matches if |regexes| AND |paths| are satisfied.
-    condition = "AND"
-    # note: |regexes| defaults to check the _Secret_ in the finding.
-    # Acceptable values for |regexTarget| are "secret" (default), "match", and "line".
-    regexTarget = "match"
-    regexes = [ '''(?i)parseur[il]''' ]
-    paths = [ '''package-lock\.json''' ]
-
-# You can extend a particular rule from the default config. e.g., gitlab-pat
-# if you have defined a custom token prefix on your GitLab instance
-[[rules]]
-id = "gitlab-pat"
-# all the other attributes from the default rule are inherited
-
-    [[rules.allowlists]]
-    regexTarget = "line"
-    regexes = [ '''MY-glpat-''' ]
-
-# This is a global allowlist which has a higher order of precedence than rule-specific allowlists.
-# If a commit listed in the `commits` field below is encountered then that commit will be skipped and no
-# secrets will be detected for said commit. The same logic applies for regexes and paths.
-[allowlist]
-description = "global allow list"
-commits = [ "commit-A", "commit-B", "commit-C"]
-paths = [
-  '''gitleaks\.toml''',
-  '''(.*?)(jpg|gif|doc)'''
-]
-
-# note: (global) regexTarget defaults to check the _Secret_ in the finding.
-# if regexTarget is not specified then _Secret_ will be used.
-# Acceptable values for regexTarget are "match" and "line"
-regexTarget = "match"
-regexes = [
-  '''219-09-9999''',
-  '''078-05-1120''',
-  '''(9[0-9]{2}|666)-\d{2}-\d{4}''',
-]
-# note: stopwords targets the extracted secret, not the entire regex match
-# like 'regexes' does. (stopwords introduced in 8.8.0)
-stopwords = [
-  '''client''',
-  '''endpoint''',
-]
-```
-
-Refer to the default [gitleaks config](https://github.com/gitleaks/gitleaks/blob/master/config/gitleaks.toml) for examples or follow the [contributing guidelines](https://github.com/gitleaks/gitleaks/blob/master/CONTRIBUTING.md) if you would like to contribute to the default configuration. Additionally, you can check out [this gitleaks blog post](https://blog.gitleaks.io/stop-leaking-secrets-configuration-2-3-aeed293b1fbf) which covers advanced configuration setups.
-
-### Additional Configuration
-
-#### gitleaks:allow
-
-If you are knowingly committing a test secret that gitleaks will catch you can add a `gitleaks:allow` comment to that line which will instruct gitleaks
-to ignore that secret. Ex:
-
-```
-class CustomClass:
-    discord_client_secret = '8dyfuiRyq=vVc3RRr_edRk-fK__JItpZ'  #gitleaks:allow
-
-```
-
-#### .gitleaksignore
-
-You can ignore specific findings by creating a `.gitleaksignore` file at the root of your repo. In release v8.10.0 Gitleaks added a `Fingerprint` value to the Gitleaks report. Each leak, or finding, has a Fingerprint that uniquely identifies a secret. Add this fingerprint to the `.gitleaksignore` file to ignore that specific secret. See Gitleaks' [.gitleaksignore](https://github.com/gitleaks/gitleaks/blob/master/.gitleaksignore) for an example. Note: this feature is experimental and is subject to change in the future.
-
-#### Decoding
-
-Sometimes secrets are encoded in a way that can make them difficult to find
-with just regex. Now you can tell gitleaks to automatically find and decode
-encoded text. The flag `--max-decode-depth` enables this feature (the default
-value "0" means the feature is disabled by default).
-
-Recursive decoding is supported since decoded text can also contain encoded
-text.  The flag `--max-decode-depth` sets the recursion limit. Recursion stops
-when there are no new segments of encoded text to decode, so setting a really
-high max depth doesn't mean it will make that many passes. It will only make as
-many as it needs to decode the text. Overall, decoding only minimally increases
-scan times.
-
-The findings for encoded text differ from normal findings in the following
-ways:
-
-- The location points the bounds of the encoded text
-  - If the rule matches outside the encoded text, the bounds are adjusted to
-    include that as well
-- The match and secret contain the decoded value
-- Two tags are added `decoded:<encoding>` and `decode-depth:<depth>`
-
-Currently supported encodings:
-
-- `base64` (both standard and base64url)
-
-#### Reporting
-
-Gitleaks has built-in support for several report formats: [`json`](https://github.com/gitleaks/gitleaks/blob/master/testdata/expected/report/json_simple.json), [`csv`](https://github.com/gitleaks/gitleaks/blob/master/testdata/expected/report/csv_simple.csv?plain=1), [`junit`](https://github.com/gitleaks/gitleaks/blob/master/testdata/expected/report/junit_simple.xml), and [`sarif`](https://github.com/gitleaks/gitleaks/blob/master/testdata/expected/report/sarif_simple.sarif).
-
-If none of these formats fit your need, you can create your own report format with a [Go `text/template` .tmpl file](https://www.digitalocean.com/community/tutorials/how-to-use-templates-in-go#step-4-writing-a-template) and the `--report-template` flag. The template can use [extended functionality from the `Masterminds/sprig` template library](https://masterminds.github.io/sprig/).
-
-For example, the following template provides a custom JSON output:
-```gotemplate
-# jsonextra.tmpl
-[{{ $lastFinding := (sub (len . ) 1) }}
-{{- range $i, $finding := . }}{{with $finding}}
-    {
-        "Description": {{ quote .Description }},
-        "StartLine": {{ .StartLine }},
-        "EndLine": {{ .EndLine }},
-        "StartColumn": {{ .StartColumn }},
-        "EndColumn": {{ .EndColumn }},
-        "Line": {{ quote .Line }},
-        "Match": {{ quote .Match }},
-        "Secret": {{ quote .Secret }},
-        "File": "{{ .File }}",
-        "SymlinkFile": {{ quote .SymlinkFile }},
-        "Commit": {{ quote .Commit }},
-        "Entropy": {{ .Entropy }},
-        "Author": {{ quote .Author }},
-        "Email": {{ quote .Email }},
-        "Date": {{ quote .Date }},
-        "Message": {{ quote .Message }},
-        "Tags": [{{ $lastTag := (sub (len .Tags ) 1) }}{{ range $j, $tag := .Tags }}{{ quote . }}{{ if ne $j $lastTag }},{{ end }}{{ end }}],
-        "RuleID": {{ quote .RuleID }},
-        "Fingerprint": {{ quote .Fingerprint }}
-    }{{ if ne $i $lastFinding }},{{ end }}
-{{- end}}{{ end }}
-]
-```
-
-Usage:
-```sh
-$ gitleaks dir ~/leaky-repo/ --report-path "report.json" --report-format template --report-template testdata/report/jsonextra.tmpl
-```
-
-## Sponsorships
-
-<p align="left">
-	<h3><a href="https://coderabbit.ai/?utm_source=oss&utm_medium=sponsorship&utm_campaign=gitleaks">coderabbit.ai</h3>
-	  <a href="https://coderabbit.ai/?utm_source=oss&utm_medium=sponsorship&utm_campaign=gitleaks">
-		  <img alt="CodeRabbit.ai Sponsorship" src="https://github.com/gitleaks/gitleaks/assets/15034943/76c30a85-887b-47ca-9956-17a8e55c6c41" width=200>
-	  </a>
-</p>
-
-
-## Exit Codes
-
-You can always set the exit code when leaks are encountered with the --exit-code flag. Default exit codes below:
-
-```
-0 - no leaks present
-1 - leaks or error encountered
-126 - unknown flag
-```
+MIT — see [LICENSE](LICENSE).

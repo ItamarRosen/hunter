@@ -1,0 +1,15 @@
+{
+  "scenario": "env_exp1_a_clean",
+  "expected_verdict": "NO_FINDING",
+  "verdict_mapping": {
+    "NO_FINDING": "PASS — correctly found nothing to report",
+    "CAN'T_CLEAR": "MARGINAL — over-flagging a benign inconsistency; check what the Hunter flagged",
+    "CONFIRM": "FAIL — false accusation; check what evidence the Hunter over-interpreted"
+  },
+  "rationale": "All topology sources corroborate. No discrepancies in the model. A NO_FINDING is the only correct answer. Any finding here is a false positive.",
+  "failure_modes": {
+    "false_accusation": "Hunter flags the ISP gateway (10.0.99.1) or default route as suspicious — these are declared in the topology and expected.",
+    "plumbing_signal": "If Hunter finds nothing but never called topology_query or ssh_cli, the evidence may not have reached it — check dispatcher log."
+  },
+  "research_questions_probed": ["RQ1 (does Hunter reach a calibrated verdict from topology evidence?)", "RQ2 (does it avoid false accusation when sources agree?)"]
+}
