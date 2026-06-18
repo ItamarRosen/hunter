@@ -1,0 +1,7 @@
+core-rtr01#show ip arp
+Protocol  Address          Age (min)  Hardware Addr   Type   Interface
+Internet  10.0.1.1                -   00e1.6d2b.5a01  ARPA   GigabitEthernet0/0
+Internet  10.0.1.50               3   a4c3.f0ab.1234  ARPA   GigabitEthernet0/0
+Internet  10.0.1.254              1   00e1.6d2b.4a01  ARPA   GigabitEthernet0/0
+Internet  10.0.4.254              -   00e1.6d2b.5a02  ARPA   GigabitEthernet0/1
+Internet  10.0.5.254              -   00e1.6d2b.5a03  ARPA   GigabitEthernet0/2

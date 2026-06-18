@@ -44,7 +44,7 @@ TRUST_TIERS: dict[str, str] = {
 # Ordered from highest trust (index 0) to lowest trust (last index).
 _TRUST_RANK = [
     "off_device_tap", "netflow", "ssh_cli", "snmp",
-    "syslog", "vendor_api", "host_edr", "host_agent", "unknown",
+    "syslog", "vendor_api", "scan_observed", "host_edr", "host_agent", "unknown",
 ]
 
 COLLECTION_TOOLS = [

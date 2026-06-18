@@ -19,9 +19,11 @@ Parse it into a clean, structured JSON object.
 Rules:
 - Discard CLI formatting noise: prompts, column headers, decoration lines, blank lines
 - Use snake_case key names
-- For routing tables: {"routes": [{"type": "S/C/O/B/...", "destination": "x.x.x.x/n", "next_hop": "...", "interface": "..."}], "notable": [...]}
+- For routing tables: {"routes": [{"type": "S/C/O/B/L/...", "destination": "x.x.x.x/n", "next_hop": "...", "interface": "..."}], "notable": [...]}
 - For interface counters: {"interfaces": [{"name": "...", "description": "...", "status": "up/down", "in_rate_bps": N, "out_rate_bps": N, "in_bytes_total": N, "out_bytes_total": N}]}
-- Add a "notable" list: flag static routes (S), host routes (/32), non-RFC1918 next-hops, asymmetric traffic ratios (out >> in)
+- For ARP tables: {"arp_entries": [{"ip": "x.x.x.x", "mac": "hhhh.hhhh.hhhh", "interface": "...", "age_min": N_or_null}]}
+- For LLDP/CDP neighbor tables: {"neighbors": [{"device_id": "...", "local_interface": "...", "remote_interface": "...", "capabilities": ["R"]}]}
+- Add a "notable" list to routing tables: flag static routes (S), host routes (/32), non-RFC1918 next-hops
 - Return ONLY valid JSON. No markdown, no explanation."""
 
 
